@@ -1,17 +1,46 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../models/story_part.dart';
+import '../../models/story_element.dart';
 import '../../data/remote/story_data_source.dart';
 import '../../data/parser/story_parser.dart';
-import '../../models/story_element.dart';
+import '../widgets/chapter_transition_widget.dart';
+
+/// One playable part: original index in the chapter's full part list,
+/// plus the part data itself (guaranteed to have a non-null filename).
+class ReaderPart {
+  final int originalIndex;
+  final StoryPart part;
+  const ReaderPart({required this.originalIndex, required this.part});
+}
+
+/// Internal flattened item — either a piece of story content or a
+/// transition divider between two parts.
+abstract class _ReaderItem {}
+
+class _ContentItem extends _ReaderItem {
+  final StoryElement element;
+  final int partIndexInList; // index within the readerParts list
+  _ContentItem(this.element, this.partIndexInList);
+}
+
+class _TransitionItem extends _ReaderItem {
+  final String? previousTitle;
+  final String currentTitle;
+  final int partIndexInList;
+  _TransitionItem({required this.previousTitle, required this.currentTitle, required this.partIndexInList});
+}
 
 class ReaderScreen extends StatefulWidget {
-  final String filename;
   final String chapterTitle;
+  final List<ReaderPart> readerParts;
+  final int startAt; // index within readerParts to begin at
 
   const ReaderScreen({
     super.key,
-    required this.filename,
     required this.chapterTitle,
+    required this.readerParts,
+    this.startAt = 0,
   });
 
   @override
@@ -22,8 +51,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final _dataSource = StoryDataSource();
   final _scrollController = ScrollController();
 
-  List<StoryElement>? _elements;
-  final Map<int, String> _selections = {};
+  List<_ReaderItem>? _items;
+  final Map<String, String> _selections = {}; // key: "partIndex-choiceId"
+  int _furthestPartIndex = 0;
   String? _error;
   bool _loading = true;
   bool _showControls = false;
@@ -32,7 +62,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
-    _fetch();
+    _furthestPartIndex = widget.startAt;
+    _fetchAll();
     _scrollController.addListener(_onScroll);
   }
 
@@ -52,11 +83,26 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
   }
 
-  Future<void> _fetch() async {
+  Future<void> _fetchAll() async {
     try {
-      final raw = await _dataSource.fetchRawStory(widget.filename);
+      final items = <_ReaderItem>[];
+      for (int i = 0; i < widget.readerParts.length; i++) {
+        final readerPart = widget.readerParts[i];
+
+        items.add(_TransitionItem(
+          previousTitle: i == 0 ? null : widget.readerParts[i - 1].part.title,
+          currentTitle: readerPart.part.title,
+          partIndexInList: i,
+        ));
+
+        final raw = await _dataSource.fetchRawStory(readerPart.part.filename!);
+        final elements = StoryParser.parse(raw);
+        for (final el in elements) {
+          items.add(_ContentItem(el, i));
+        }
+      }
       setState(() {
-        _elements = StoryParser.parse(raw);
+        _items = items;
         _loading = false;
       });
     } catch (e) {
@@ -71,36 +117,57 @@ class _ReaderScreenState extends State<ReaderScreen> {
     setState(() => _showControls = !_showControls);
   }
 
-  List<StoryElement> get _visibleElements {
-    final all = _elements ?? [];
-    return all.where((el) => el.isVisible(_selections)).toList();
+  bool _isVisible(_ReaderItem item) {
+    if (item is _TransitionItem) return true;
+    if (item is _ContentItem) {
+      final el = item.element;
+      if (el.requiredValue == null) return true;
+      final key = '${item.partIndexInList}-${el.gateChoiceId}';
+      final chosen = _selections[key];
+      if (chosen == null) return false;
+      return el.requiredValue!.split(';').map((s) => s.trim()).contains(chosen);
+    }
+    return true;
   }
 
-  void _selectChoice(int choiceId, String value) {
-    setState(() {
-      _selections[choiceId] = value;
-    });
+  void _onTransitionReached(int partIndexInList) {
+    if (partIndexInList > _furthestPartIndex - widget.startAt) {
+      // Defer to avoid setState-during-build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final originalIndex = widget.readerParts[partIndexInList].originalIndex;
+        if (originalIndex > _furthestPartIndex) {
+          setState(() => _furthestPartIndex = originalIndex);
+        }
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _toggleControls,
-              child: _buildBody(),
-            ),
-            _TopBar(
-              visible: _showControls,
-              title: widget.chapterTitle,
-              onBack: () => Navigator.of(context).pop(),
-            ),
-            _BottomBar(visible: _showControls, progress: _progress),
-          ],
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.of(context).pop(_furthestPartIndex);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _toggleControls,
+                child: _buildBody(),
+              ),
+              _TopBar(
+                visible: _showControls,
+                title: widget.chapterTitle,
+                onBack: () => Navigator.of(context).pop(_furthestPartIndex),
+              ),
+              _BottomBar(visible: _showControls, progress: _progress),
+            ],
+          ),
         ),
       ),
     );
@@ -123,22 +190,38 @@ class _ReaderScreenState extends State<ReaderScreen> {
         ),
       );
     }
-    final elements = _visibleElements;
+    final visibleItems = (_items ?? []).where(_isVisible).toList();
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 70, 20, 90),
-      itemCount: elements.length,
+      itemCount: visibleItems.length,
       itemBuilder: (context, index) {
-        final el = elements[index];
-        if (el is StoryChoiceElement) {
-          return _ChoiceWidget(
-            element: el,
-            selectedValue: _selections[el.id],
-            onSelect: (value) => _selectChoice(el.id, value),
+        final item = visibleItems[index];
+
+        if (item is _TransitionItem) {
+          _onTransitionReached(item.partIndexInList);
+          return ChapterTransitionWidget(
+            previousTitle: item.previousTitle,
+            currentTitle: item.currentTitle,
           );
         }
-        if (el is StoryLineElement) {
-          return _StoryLineWidget(line: el);
+
+        if (item is _ContentItem) {
+          final el = item.element;
+          if (el is StoryChoiceElement) {
+            return _ChoiceWidget(
+              element: el,
+              selectedValue: _selections['${item.partIndexInList}-${el.id}'],
+              onSelect: (value) {
+                setState(() {
+                  _selections['${item.partIndexInList}-${el.id}'] = value;
+                });
+              },
+            );
+          }
+          if (el is StoryLineElement) {
+            return _StoryLineWidget(line: el);
+          }
         }
         return const SizedBox.shrink();
       },
@@ -231,11 +314,10 @@ class _ChoiceWidget extends StatelessWidget {
             final hasSelection = selectedValue != null;
 
             if (hasSelection && !isSelected) {
-              // Collapsed view of the option not chosen
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: GestureDetector(
-                  onTap: () => onSelect(opt.value), // tap to switch answer
+                  onTap: () => onSelect(opt.value),
                   child: Text(
                     'You didn\'t choose: ${opt.label}',
                     style: const TextStyle(

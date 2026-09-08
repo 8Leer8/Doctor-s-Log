@@ -24,25 +24,45 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   int get _finishedCount => _finished.where((f) => f).length;
 
-  void _openPart(int index) {
-    final part = widget.chapter.parts[index];
-    if (part.filename == null) {
+  List<ReaderPart> get _playableParts {
+    final result = <ReaderPart>[];
+    for (int i = 0; i < widget.chapter.parts.length; i++) {
+      final p = widget.chapter.parts[i];
+      if (p.filename != null) {
+        result.add(ReaderPart(originalIndex: i, part: p));
+      }
+    }
+    return result;
+  }
+
+  void _openPart(int originalIndex) {
+    final playable = _playableParts;
+    final startAt = playable.indexWhere((rp) => rp.originalIndex == originalIndex);
+
+    if (startAt == -1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("This part isn't mapped to a source file yet.")),
       );
       return;
     }
+
     Navigator.of(context)
-        .push(
+        .push<int>(
       MaterialPageRoute(
         builder: (_) => ReaderScreen(
-          filename: part.filename!,
-          chapterTitle: part.title,
+          chapterTitle: widget.chapter.title,
+          readerParts: playable,
+          startAt: startAt,
         ),
       ),
     )
-        .then((_) {
-      setState(() => _finished[index] = true);
+        .then((furthestOriginalIndex) {
+      if (furthestOriginalIndex == null) return;
+      setState(() {
+        for (int i = 0; i <= furthestOriginalIndex && i < _finished.length; i++) {
+          _finished[i] = true;
+        }
+      });
     });
   }
 

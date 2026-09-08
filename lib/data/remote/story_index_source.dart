@@ -5,7 +5,6 @@ import '../../models/story_index_entry.dart';
 class StoryIndexSource {
   final Dio _dio = Dio();
 
-  // TODO: confirm branch — try 'master' first, switch to 'main' if 404
   static const String _base =
       'https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData_YoStar@master/en_US/gamedata/excel';
 
