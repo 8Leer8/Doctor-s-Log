@@ -1,35 +1,77 @@
-import '../../models/story_line.dart';
+import '../../models/story_element.dart';
 
 class StoryParser {
   static final RegExp _speakerLineRegex = RegExp(r'^\[name="([^"]*)"\]\s*(.*)$');
   static final RegExp _onlyTagRegex = RegExp(r'^\[.*\]\s*$');
+  static final RegExp _decisionRegex =
+      RegExp(r'^\[Decision\(options="(.*)",\s*values="(.*)"\)\]\s*$');
+  static final RegExp _predicateRegex =
+      RegExp(r'^\[Predicate\(references="(.*)"\)\]\s*$');
 
-  /// Converts raw Arknights story script text into clean reading lines.
-  /// - Lines like [name="X"] text become StoryLine(speaker: X, text: text)
-  /// - Lines that are pure stage direction (e.g. [Background(...)]) are skipped
-  /// - Any other non-empty line is treated as plain narration
-  static List<StoryLine> parse(String raw) {
-    final result = <StoryLine>[];
+  /// Converts raw Arknights story script text into a sequence of
+  /// StoryLineElement / StoryChoiceElement, with visibility gating
+  /// derived from [Decision(...)] / [Predicate(...)] tags.
+  static List<StoryElement> parse(String raw) {
+    final result = <StoryElement>[];
+
+    int choiceCounter = 0;
+    int? currentGateChoiceId;
+    String? currentRequiredValue;
 
     for (final rawLine in raw.split('\n')) {
       final line = rawLine.trimRight();
       if (line.trim().isEmpty) continue;
+
+      final decisionMatch = _decisionRegex.firstMatch(line);
+      if (decisionMatch != null) {
+        choiceCounter++;
+        final options = (decisionMatch.group(1) ?? '').split(';');
+        final values = (decisionMatch.group(2) ?? '').split(';');
+        final count = options.length < values.length ? options.length : values.length;
+        final opts = <StoryChoiceOption>[
+          for (int i = 0; i < count; i++)
+            StoryChoiceOption(label: options[i].trim(), value: values[i].trim()),
+        ];
+        result.add(StoryChoiceElement(
+          id: choiceCounter,
+          options: opts,
+          requiredValue: currentRequiredValue,
+          gateChoiceId: currentGateChoiceId,
+        ));
+        continue;
+      }
+
+      final predicateMatch = _predicateRegex.firstMatch(line);
+      if (predicateMatch != null) {
+        currentRequiredValue = predicateMatch.group(1);
+        currentGateChoiceId = choiceCounter == 0 ? null : choiceCounter;
+        continue;
+      }
 
       final speakerMatch = _speakerLineRegex.firstMatch(line);
       if (speakerMatch != null) {
         final speaker = speakerMatch.group(1) ?? '';
         final text = (speakerMatch.group(2) ?? '').trim();
         if (text.isNotEmpty) {
-          result.add(StoryLine(speaker: speaker, text: text));
+          result.add(StoryLineElement(
+            speaker: speaker,
+            text: text,
+            requiredValue: currentRequiredValue,
+            gateChoiceId: currentGateChoiceId,
+          ));
         }
         continue;
       }
 
       if (_onlyTagRegex.hasMatch(line)) {
-        continue; // pure stage direction, skip
+        continue; // other stage direction, skip
       }
 
-      result.add(StoryLine(text: line.trim()));
+      result.add(StoryLineElement(
+        text: line.trim(),
+        requiredValue: currentRequiredValue,
+        gateChoiceId: currentGateChoiceId,
+      ));
     }
 
     return result;

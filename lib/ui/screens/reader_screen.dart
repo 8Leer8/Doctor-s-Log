@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../data/remote/story_data_source.dart';
 import '../../data/parser/story_parser.dart';
-import '../../models/story_line.dart';
+import '../../models/story_element.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String filename;
@@ -22,7 +22,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final _dataSource = StoryDataSource();
   final _scrollController = ScrollController();
 
-  List<StoryLine>? _lines;
+  List<StoryElement>? _elements;
+  final Map<int, String> _selections = {};
   String? _error;
   bool _loading = true;
   bool _showControls = false;
@@ -55,7 +56,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     try {
       final raw = await _dataSource.fetchRawStory(widget.filename);
       setState(() {
-        _lines = StoryParser.parse(raw);
+        _elements = StoryParser.parse(raw);
         _loading = false;
       });
     } catch (e) {
@@ -68,6 +69,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   void _toggleControls() {
     setState(() => _showControls = !_showControls);
+  }
+
+  List<StoryElement> get _visibleElements {
+    final all = _elements ?? [];
+    return all.where((el) => el.isVisible(_selections)).toList();
+  }
+
+  void _selectChoice(int choiceId, String value) {
+    setState(() {
+      _selections[choiceId] = value;
+    });
   }
 
   @override
@@ -111,18 +123,31 @@ class _ReaderScreenState extends State<ReaderScreen> {
         ),
       );
     }
-    final lines = _lines ?? [];
+    final elements = _visibleElements;
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 70, 20, 90),
-      itemCount: lines.length,
-      itemBuilder: (context, index) => _StoryLineWidget(line: lines[index]),
+      itemCount: elements.length,
+      itemBuilder: (context, index) {
+        final el = elements[index];
+        if (el is StoryChoiceElement) {
+          return _ChoiceWidget(
+            element: el,
+            selectedValue: _selections[el.id],
+            onSelect: (value) => _selectChoice(el.id, value),
+          );
+        }
+        if (el is StoryLineElement) {
+          return _StoryLineWidget(line: el);
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 }
 
 class _StoryLineWidget extends StatelessWidget {
-  final StoryLine line;
+  final StoryLineElement line;
   const _StoryLineWidget({required this.line});
 
   @override
@@ -156,6 +181,113 @@ class _StoryLineWidget extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ChoiceWidget extends StatelessWidget {
+  final StoryChoiceElement element;
+  final String? selectedValue;
+  final ValueChanged<String> onSelect;
+
+  const _ChoiceWidget({
+    required this.element,
+    required this.selectedValue,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.fork_right, size: 16, color: AppColors.amber),
+              SizedBox(width: 6),
+              Text(
+                'CHOICE',
+                style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.amber,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...element.options.map((opt) {
+            final isSelected = selectedValue == opt.value;
+            final hasSelection = selectedValue != null;
+
+            if (hasSelection && !isSelected) {
+              // Collapsed view of the option not chosen
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: GestureDetector(
+                  onTap: () => onSelect(opt.value), // tap to switch answer
+                  child: Text(
+                    'You didn\'t choose: ${opt.label}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.coldGray,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: InkWell(
+                onTap: () => onSelect(opt.value),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.amber.withValues(alpha: 0.15)
+                        : AppColors.surfaceRaised,
+                    border: Border.all(
+                      color: isSelected ? AppColors.amber : AppColors.border,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      if (isSelected)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 6),
+                          child: Icon(Icons.check, size: 14, color: AppColors.amber),
+                        ),
+                      Expanded(
+                        child: Text(
+                          opt.label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isSelected ? AppColors.amber : AppColors.textPrimary,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -208,9 +340,7 @@ class _TopBar extends StatelessWidget {
             ),
             IconButton(
               icon: const Icon(Icons.settings_outlined, color: AppColors.coldGray),
-              onPressed: () {
-                // TODO: reading settings (font size, theme)
-              },
+              onPressed: () {},
             ),
           ],
         ),
@@ -253,7 +383,7 @@ class _BottomBar extends StatelessWidget {
               ),
               child: Slider(
                 value: progress,
-                onChanged: (_) {}, // seek-by-drag not wired yet
+                onChanged: (_) {},
               ),
             ),
             Text(
