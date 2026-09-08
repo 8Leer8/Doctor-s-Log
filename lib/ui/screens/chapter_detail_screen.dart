@@ -1,24 +1,75 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
+import '../../models/story_part.dart';
+import 'reader_screen.dart';
 
-class ChapterDetailScreen extends StatelessWidget {
+class ChapterDetailScreen extends StatefulWidget {
   final ChapterPreview chapter;
 
   const ChapterDetailScreen({super.key, required this.chapter});
 
   @override
+  State<ChapterDetailScreen> createState() => _ChapterDetailScreenState();
+}
+
+class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
+  late List<bool> _finished;
+
+  @override
+  void initState() {
+    super.initState();
+    _finished = widget.chapter.parts.map((p) => p.finished).toList();
+  }
+
+  int get _finishedCount => _finished.where((f) => f).length;
+
+  void _openPart(int index) {
+    final part = widget.chapter.parts[index];
+    if (part.filename == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This part isn't mapped to a source file yet.")),
+      );
+      return;
+    }
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(
+        builder: (_) => ReaderScreen(
+          filename: part.filename!,
+          chapterTitle: part.title,
+        ),
+      ),
+    )
+        .then((_) {
+      setState(() => _finished[index] = true);
+    });
+  }
+
+  void _continueReading() {
+    final nextIndex = _finished.indexWhere((f) => !f);
+    _openPart(nextIndex == -1 ? 0 : nextIndex);
+  }
+
+  void _markAllFinished() {
+    setState(() => _finished = List.filled(_finished.length, true));
+  }
+
+  void _clearAll() {
+    setState(() => _finished = List.filled(_finished.length, false));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final progressRatio = chapter.progressTotal == 0
-        ? 0.0
-        : chapter.progressCurrent / chapter.progressTotal;
+    final chapter = widget.chapter;
+    final total = chapter.parts.length;
+    final progressRatio = total == 0 ? 0.0 : _finishedCount / total;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
-            // Header image placeholder + close button
             Stack(
               children: [
                 Container(
@@ -26,9 +77,11 @@ class ChapterDetailScreen extends StatelessWidget {
                   width: double.infinity,
                   color: AppColors.surfaceRaised,
                   child: Center(
-                    child: Icon(Icons.image_outlined,
-                        color: AppColors.coldGray.withValues(alpha: 0.4),
-                        size: 36),
+                    child: Icon(
+                      Icons.image_outlined,
+                      color: AppColors.coldGray.withValues(alpha: 0.4),
+                      size: 36,
+                    ),
                   ),
                 ),
                 Positioned(
@@ -82,23 +135,22 @@ class ChapterDetailScreen extends StatelessWidget {
                           label: 'CONTINUE',
                           icon: Icons.play_arrow,
                           filled: true,
-                          onPressed: () {
-                            // TODO: navigate to last-read position
-                          },
+                          onPressed: _continueReading,
                         ),
                         _ActionButton(
                           label: 'MARK ALL FINISHED',
                           icon: Icons.check,
-                          onPressed: () {
-                            // TODO: wire mark-all
-                          },
+                          onPressed: _markAllFinished,
                         ),
                         _ActionButton(
                           label: 'CLEAR ALL',
                           icon: Icons.refresh,
-                          onPressed: () {
-                            // TODO: wire clear-all
-                          },
+                          onPressed: _clearAll,
+                        ),
+                        _ActionButton(
+                          label: 'WIKI',
+                          icon: Icons.open_in_new,
+                          onPressed: () {},
                         ),
                       ],
                     ),
@@ -109,8 +161,7 @@ class ChapterDetailScreen extends StatelessWidget {
                         value: progressRatio,
                         minHeight: 4,
                         backgroundColor: AppColors.border,
-                        valueColor:
-                            const AlwaysStoppedAnimation(AppColors.amber),
+                        valueColor: const AlwaysStoppedAnimation(AppColors.amber),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -125,7 +176,7 @@ class ChapterDetailScreen extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '${chapter.progressCurrent} OF ${chapter.progressTotal} FINISHED',
+                          '$_finishedCount OF $total FINISHED',
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppColors.amber,
@@ -135,7 +186,16 @@ class ChapterDetailScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    ...chapter.parts.map((part) => _PartRow(part: part)),
+                    ...List.generate(chapter.parts.length, (index) {
+                      final part = chapter.parts[index];
+                      return _PartRow(
+                        part: part,
+                        finished: _finished[index],
+                        onToggle: () =>
+                            setState(() => _finished[index] = !_finished[index]),
+                        onOpen: () => _openPart(index),
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -201,38 +261,46 @@ class _ActionButton extends StatelessWidget {
 }
 
 class _PartRow extends StatelessWidget {
-  final dynamic part; // StoryPart
+  final StoryPart part;
+  final bool finished;
+  final VoidCallback onToggle;
+  final VoidCallback onOpen;
 
-  const _PartRow({required this.part});
+  const _PartRow({
+    required this.part,
+    required this.finished,
+    required this.onToggle,
+    required this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {
-        // TODO: open reader screen for this part
-      },
+      onTap: onOpen,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
         ),
         child: Row(
           children: [
-            Icon(
-              part.finished ? Icons.check_circle : Icons.circle_outlined,
-              size: 18,
-              color: part.finished ? Colors.green.shade400 : AppColors.coldGray,
+            GestureDetector(
+              onTap: onToggle,
+              child: Icon(
+                finished ? Icons.check_circle : Icons.circle_outlined,
+                size: 20,
+                color: finished ? Colors.green.shade400 : AppColors.coldGray,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 part.title,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textPrimary,
-                ),
+                style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
               ),
             ),
+            if (part.filename == null)
+              const Icon(Icons.cloud_off, size: 14, color: AppColors.coldGray),
           ],
         ),
       ),

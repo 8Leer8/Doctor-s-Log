@@ -1,11 +1,42 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
+import '../../data/repository/chapter_repository.dart';
 import '../widgets/chapter_card.dart';
 import 'chapter_detail_screen.dart';
 
-class LibraryScreen extends StatelessWidget {
+class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
+
+  @override
+  State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends State<LibraryScreen> {
+  final _repository = ChapterRepository();
+
+  List<ChapterPreview>? _mainTheme;
+  List<ChapterPreview>? _sideStories;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final main = await _repository.fetchMainTheme();
+      final side = await _repository.fetchSideStories();
+      setState(() {
+        _mainTheme = main;
+        _sideStories = side;
+      });
+    } catch (e) {
+      setState(() => _error = e.toString());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,17 +48,36 @@ class LibraryScreen extends StatelessWidget {
           children: [
             const _TopBar(),
             const _SectionTabBar(),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _ChapterGrid(chapters: mockMainTheme),
-                  _ChapterGrid(chapters: mockSideStories),
-                ],
-              ),
-            ),
+            Expanded(child: _buildBody()),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Failed to load library:\n$_error',
+            style: const TextStyle(color: Colors.redAccent),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    if (_mainTheme == null || _sideStories == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.amber),
+      );
+    }
+    return TabBarView(
+      children: [
+        _ChapterGrid(chapters: _mainTheme!),
+        _ChapterGrid(chapters: _sideStories!),
+      ],
     );
   }
 }
@@ -104,6 +154,11 @@ class _ChapterGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (chapters.isEmpty) {
+      return const Center(
+        child: Text('No chapters found', style: TextStyle(color: AppColors.textSecondary)),
+      );
+    }
     return GridView.builder(
       padding: const EdgeInsets.all(10),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
