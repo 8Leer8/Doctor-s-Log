@@ -3,9 +3,23 @@ import '../../../theme/app_theme.dart';
 
 class ReaderBottomBar extends StatelessWidget {
   final bool visible;
-  final double progress;
+  final int currentPart; // 1-based for display
+  final int totalParts;
+  final bool canGoPrev;
+  final bool canGoNext;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
 
-  const ReaderBottomBar({super.key, required this.visible, required this.progress});
+  const ReaderBottomBar({
+    super.key,
+    required this.visible,
+    required this.currentPart,
+    required this.totalParts,
+    required this.canGoPrev,
+    required this.canGoNext,
+    required this.onPrev,
+    required this.onNext,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -15,32 +29,38 @@ class ReaderBottomBar extends StatelessWidget {
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: AppColors.surface.withValues(alpha: 0.95),
           border: const Border(
             top: BorderSide(color: AppColors.border, width: 1),
           ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                activeTrackColor: AppColors.amber,
-                inactiveTrackColor: AppColors.border,
-                thumbColor: AppColors.amber,
-                trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              ),
-              child: Slider(
-                value: progress,
-                onChanged: (_) {},
+            IconButton(
+              icon: const Icon(Icons.skip_previous),
+              color: canGoPrev ? AppColors.textPrimary : AppColors.coldGray,
+              onPressed: canGoPrev ? onPrev : null,
+            ),
+            Expanded(
+              child: Center(
+                child: Text(
+                  'PART $currentPart OF $totalParts',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1,
+                  ),
+                ),
               ),
             ),
-            Text(
-              '${(progress * 100).round()}% read',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            IconButton(
+              icon: const Icon(Icons.skip_next),
+              color: canGoNext ? AppColors.textPrimary : AppColors.coldGray,
+              onPressed: canGoNext ? onNext : null,
             ),
           ],
         ),

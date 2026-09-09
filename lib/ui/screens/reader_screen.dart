@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import '../../theme/app_theme.dart';
 import '../../models/reader_part.dart';
 import '../../models/story_element.dart';
@@ -38,10 +39,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final Map<String, String> _selections = {};
   int _furthestPartIndex = 0;
   int _currentPartIndexInList = 0;
-  bool _reachedEnd = false;
   String? _error;
   bool _loading = true;
   bool _showControls = false;
+
+  // Cached document offsets — measured once per marker, reused forever.
+  // Avoids depending on a marker widget staying mounted for every future
+  // scroll tick, which is unreliable once it scrolls far off-screen.
+  final Map<int, double> _partStartOffsetCache = {};
 
   @override
   void initState() {
@@ -67,51 +72,76 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _updateCurrentPart();
   }
 
-  void _updateCurrentPart() {
-    const thresholdPx = 70.0;
-
-    int? bestIndex;
-    _transitionKeys.forEach((partIndex, key) {
+  double? _absoluteOffsetOf(GlobalKey key) {
+    try {
       final ctx = key.currentContext;
-      if (ctx == null) return;
+      if (ctx == null) return null;
       final box = ctx.findRenderObject() as RenderBox?;
-      if (box == null || !box.attached) return;
-      final dy = box.localToGlobal(Offset.zero).dy;
-      if (dy <= thresholdPx) {
-        if (bestIndex == null || partIndex > bestIndex!) bestIndex = partIndex;
-      }
-    });
-
-    bool endVisible = false;
-    final endCtx = _endKey.currentContext;
-    if (endCtx != null) {
-      final box = endCtx.findRenderObject() as RenderBox?;
-      if (box != null && box.attached) {
-        final dy = box.localToGlobal(Offset.zero).dy;
-        final screenHeight = MediaQuery.of(context).size.height;
-        if (dy <= screenHeight) endVisible = true;
-      }
-    }
-
-    if (bestIndex != null && bestIndex != _currentPartIndexInList) {
-      final originalIndex = widget.readerParts[bestIndex!].originalIndex;
-      setState(() {
-        _currentPartIndexInList = bestIndex!;
-        if (originalIndex > _furthestPartIndex) {
-          _furthestPartIndex = originalIndex;
-        }
-      });
-    }
-    if (endVisible != _reachedEnd) {
-      setState(() => _reachedEnd = endVisible);
+      if (box == null || !box.attached) return null;
+      final viewport = RenderAbstractViewport.of(box);
+      final revealed = viewport.getOffsetToReveal(box, 0.0);
+      return revealed.offset;
+    } catch (_) {
+      return null;
     }
   }
 
-  double get _progress {
-    final totalParts = widget.readerParts.length;
-    if (_reachedEnd) return 1.0;
-    if (totalParts <= 1) return 0.0;
-    return (_currentPartIndexInList / (totalParts - 1)).clamp(0.0, 1.0);
+  void _recordOffsetsIfPossible() {
+    for (int i = 0; i < widget.readerParts.length; i++) {
+      if (_partStartOffsetCache.containsKey(i)) continue;
+      final offset = _absoluteOffsetOf(_keyFor(i));
+      if (offset != null) {
+        _partStartOffsetCache[i] = offset;
+      }
+    }
+  }
+
+  void _updateCurrentPart() {
+    const thresholdPx = 70.0;
+
+    _recordOffsetsIfPossible();
+
+    int bestIndex = _currentPartIndexInList;
+    for (int i = 0; i < widget.readerParts.length; i++) {
+      final cachedStart = _partStartOffsetCache[i];
+      if (cachedStart == null) continue;
+      if (cachedStart <= _scrollController.offset + thresholdPx && i > bestIndex) {
+        bestIndex = i;
+      }
+      if (cachedStart > _scrollController.offset + thresholdPx && i == bestIndex && i > 0) {
+        bestIndex = i - 1;
+      }
+    }
+
+    if (bestIndex != _currentPartIndexInList) {
+      final originalIndex = widget.readerParts[bestIndex].originalIndex;
+      if (originalIndex > _furthestPartIndex) {
+        _furthestPartIndex = originalIndex;
+      }
+      setState(() {
+        _currentPartIndexInList = bestIndex;
+      });
+    }
+  }
+
+  void _jumpToPart(int partIndexInList) {
+    final offset = _partStartOffsetCache[partIndexInList];
+    if (offset == null) return;
+    _scrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _goPrev() {
+    if (_currentPartIndexInList <= 0) return;
+    _jumpToPart(_currentPartIndexInList - 1);
+  }
+
+  void _goNext() {
+    if (_currentPartIndexInList >= widget.readerParts.length - 1) return;
+    _jumpToPart(_currentPartIndexInList + 1);
   }
 
   String get _currentPartTitle {
@@ -141,6 +171,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
       setState(() {
         _items = items;
         _loading = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _recordOffsetsIfPossible();
       });
     } catch (e) {
       setState(() {
@@ -212,7 +245,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 title: _currentPartTitle,
                 onBack: () => Navigator.of(context).pop(_furthestPartIndex),
               ),
-              ReaderBottomBar(visible: _showControls, progress: _progress),
+              ReaderBottomBar(
+                visible: _showControls,
+                currentPart: _currentPartIndexInList + 1,
+                totalParts: widget.readerParts.length,
+                canGoPrev: _currentPartIndexInList > 0,
+                canGoNext: _currentPartIndexInList < widget.readerParts.length - 1,
+                onPrev: _goPrev,
+                onNext: _goNext,
+              ),
             ],
           ),
         ),
@@ -241,6 +282,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 70, 20, 90),
+      scrollCacheExtent: const ScrollCacheExtent.pixels(4000),
       itemCount: visibleItems.length,
       itemBuilder: (context, index) {
         final item = visibleItems[index];
@@ -268,6 +310,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
               onSelect: (value) {
                 setState(() {
                   _selections['${el.id}'] = value;
+                });
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _recordOffsetsIfPossible();
                 });
               },
             );
