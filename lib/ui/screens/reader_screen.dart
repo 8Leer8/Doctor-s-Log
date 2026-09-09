@@ -6,21 +6,17 @@ import '../../data/remote/story_data_source.dart';
 import '../../data/parser/story_parser.dart';
 import '../widgets/chapter_transition_widget.dart';
 
-/// One playable part: original index in the chapter's full part list,
-/// plus the part data itself (guaranteed to have a non-null filename).
 class ReaderPart {
   final int originalIndex;
   final StoryPart part;
   const ReaderPart({required this.originalIndex, required this.part});
 }
 
-/// Internal flattened item — either a piece of story content or a
-/// transition divider between two parts.
 abstract class _ReaderItem {}
 
 class _ContentItem extends _ReaderItem {
   final StoryElement element;
-  final int partIndexInList; // index within the readerParts list
+  final int partIndexInList;
   _ContentItem(this.element, this.partIndexInList);
 }
 
@@ -31,10 +27,12 @@ class _TransitionItem extends _ReaderItem {
   _TransitionItem({required this.previousTitle, required this.currentTitle, required this.partIndexInList});
 }
 
+class _EndOfChapterItem extends _ReaderItem {}
+
 class ReaderScreen extends StatefulWidget {
   final String chapterTitle;
   final List<ReaderPart> readerParts;
-  final int startAt; // index within readerParts to begin at
+  final int startAt;
 
   const ReaderScreen({
     super.key,
@@ -52,7 +50,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final _scrollController = ScrollController();
 
   List<_ReaderItem>? _items;
-  final Map<String, String> _selections = {}; // key: "partIndex-choiceId"
+  final Map<String, String> _selections = {};
   int _furthestPartIndex = 0;
   String? _error;
   bool _loading = true;
@@ -117,38 +115,68 @@ class _ReaderScreenState extends State<ReaderScreen> {
     setState(() => _showControls = !_showControls);
   }
 
-  bool _isVisible(_ReaderItem item) {
-    if (item is _TransitionItem) return true;
-    if (item is _ContentItem) {
-      final el = item.element;
-      if (el.requiredValue == null) return true;
-      final key = '${item.partIndexInList}-${el.gateChoiceId}';
-      final chosen = _selections[key];
-      if (chosen == null) return false;
-      return el.requiredValue!.split(';').map((s) => s.trim()).contains(chosen);
+  bool _isGateSatisfied(StoryElement el) {
+    if (el.requiredValue == null) return true;
+    final key = '${el.gateChoiceId}';
+    final chosen = _selections[key];
+    if (chosen == null) return false;
+    return el.requiredValue!.split(';').map((s) => s.trim()).contains(chosen);
+  }
+
+  /// Walks items in order. Stops immediately after showing an unanswered
+  /// choice — nothing beyond it renders until it's answered. If the whole
+  /// list is consumed without stopping, appends an end-of-chapter card.
+  List<_ReaderItem> _buildVisibleItems() {
+    final all = _items ?? [];
+    final visible = <_ReaderItem>[];
+
+    for (final item in all) {
+      if (item is _TransitionItem) {
+        visible.add(item);
+        continue;
+      }
+      if (item is _ContentItem) {
+        final el = item.element;
+
+        if (!_isGateSatisfied(el)) {
+          // Gated by a choice not yet answered (or answered differently) — skip silently.
+          continue;
+        }
+
+        visible.add(item);
+
+        if (el is StoryChoiceElement) {
+          final key = '${el.id}';
+          final answered = _selections.containsKey(key);
+          if (!answered) {
+            // Stop here — force the reader to answer before seeing more.
+            return visible;
+          }
+        }
+      }
     }
-    return true;
+
+    visible.add(_EndOfChapterItem());
+    return visible;
   }
 
   void _onTransitionReached(int partIndexInList) {
-    if (partIndexInList > _furthestPartIndex - widget.startAt) {
-      // Defer to avoid setState-during-build
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final originalIndex = widget.readerParts[partIndexInList].originalIndex;
-        if (originalIndex > _furthestPartIndex) {
-          setState(() => _furthestPartIndex = originalIndex);
-        }
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final originalIndex = widget.readerParts[partIndexInList].originalIndex;
+      if (originalIndex > _furthestPartIndex) {
+        setState(() => _furthestPartIndex = originalIndex);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
         Navigator.of(context).pop(_furthestPartIndex);
-        return false;
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
@@ -190,7 +218,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         ),
       );
     }
-    final visibleItems = (_items ?? []).where(_isVisible).toList();
+    final visibleItems = _buildVisibleItems();
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 70, 20, 90),
@@ -206,15 +234,19 @@ class _ReaderScreenState extends State<ReaderScreen> {
           );
         }
 
+        if (item is _EndOfChapterItem) {
+          return const _EndOfChapterWidget();
+        }
+
         if (item is _ContentItem) {
           final el = item.element;
           if (el is StoryChoiceElement) {
             return _ChoiceWidget(
               element: el,
-              selectedValue: _selections['${item.partIndexInList}-${el.id}'],
+              selectedValue: _selections['${el.id}'],
               onSelect: (value) {
                 setState(() {
-                  _selections['${item.partIndexInList}-${el.id}'] = value;
+                  _selections['${el.id}'] = value;
                 });
               },
             );
@@ -225,6 +257,48 @@ class _ReaderScreenState extends State<ReaderScreen> {
         }
         return const SizedBox.shrink();
       },
+    );
+  }
+}
+
+class _EndOfChapterWidget extends StatelessWidget {
+  const _EndOfChapterWidget();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 20, bottom: 60),
+      child: ClipPath(
+        clipper: CutCornerClipper(cut: 14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
+          ),
+          child: const Column(
+            children: [
+              Icon(Icons.check_circle, color: AppColors.amber, size: 32),
+              SizedBox(height: 10),
+              Text(
+                'CHAPTER FINISHED',
+                style: TextStyle(
+                  color: AppColors.amber,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'You\'ve reached the end.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -284,92 +358,107 @@ class _ChoiceWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.fork_right, size: 16, color: AppColors.amber),
-              SizedBox(width: 6),
-              Text(
-                'CHOICE',
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.amber,
-                ),
-              ),
-            ],
+      child: ClipPath(
+        clipper: CutCornerClipper(cut: 10),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.amber.withValues(alpha: 0.5)),
           ),
-          const SizedBox(height: 8),
-          ...element.options.map((opt) {
-            final isSelected = selectedValue == opt.value;
-            final hasSelection = selectedValue != null;
-
-            if (hasSelection && !isSelected) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: GestureDetector(
-                  onTap: () => onSelect(opt.value),
-                  child: Text(
-                    'You didn\'t choose: ${opt.label}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.coldGray,
-                      fontStyle: FontStyle.italic,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.fork_right, size: 16, color: AppColors.amber),
+                  SizedBox(width: 6),
+                  Text(
+                    'CHOICE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.amber,
                     ),
                   ),
-                ),
-              );
-            }
+                ],
+              ),
+              const SizedBox(height: 10),
+              ...element.options.map((opt) {
+                final isSelected = selectedValue == opt.value;
+                final hasSelection = selectedValue != null;
 
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: InkWell(
-                onTap: () => onSelect(opt.value),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.amber.withValues(alpha: 0.15)
-                        : AppColors.surfaceRaised,
-                    border: Border.all(
-                      color: isSelected ? AppColors.amber : AppColors.border,
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      if (isSelected)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 6),
-                          child: Icon(Icons.check, size: 14, color: AppColors.amber),
-                        ),
-                      Expanded(
-                        child: Text(
-                          opt.label,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isSelected ? AppColors.amber : AppColors.textPrimary,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                          ),
+                if (hasSelection && !isSelected) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: GestureDetector(
+                      onTap: () => onSelect(opt.value),
+                      child: Text(
+                        'You didn\'t choose: ${opt.label}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.coldGray,
+                          fontStyle: FontStyle.italic,
                         ),
                       ),
-                    ],
+                    ),
+                  );
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: InkWell(
+                    onTap: () => onSelect(opt.value),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.amber.withValues(alpha: 0.15)
+                            : AppColors.surfaceRaised,
+                        border: Border.all(
+                          color: isSelected ? AppColors.amber : AppColors.border,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        children: [
+                          if (isSelected)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 6),
+                              child: Icon(Icons.check, size: 14, color: AppColors.amber),
+                            ),
+                          Expanded(
+                            child: Text(
+                              opt.label,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isSelected ? AppColors.amber : AppColors.textPrimary,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              if (selectedValue == null) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Pick an option to continue reading.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.coldGray,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
-              ),
-            );
-          }),
-        ],
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

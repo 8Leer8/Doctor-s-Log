@@ -2,7 +2,6 @@ import '../../models/story_element.dart';
 
 class StoryParser {
   static final RegExp _speakerLineRegex = RegExp(r'^\[name="([^"]*)"\]\s*(.*)$');
-  static final RegExp _onlyTagRegex = RegExp(r'^\[.*\]\s*$');
   static final RegExp _decisionRegex =
       RegExp(r'^\[Decision\(options="(.*)",\s*values="(.*)"\)\]\s*$');
   static final RegExp _predicateRegex =
@@ -20,7 +19,8 @@ class StoryParser {
 
     for (final rawLine in raw.split('\n')) {
       final line = rawLine.trimRight();
-      if (line.trim().isEmpty) continue;
+      final trimmedLeft = line.trimLeft();
+      if (trimmedLeft.isEmpty) continue;
 
       final decisionMatch = _decisionRegex.firstMatch(line);
       if (decisionMatch != null) {
@@ -50,7 +50,8 @@ class StoryParser {
 
       final speakerMatch = _speakerLineRegex.firstMatch(line);
       if (speakerMatch != null) {
-        final speaker = speakerMatch.group(1) ?? '';
+        final rawSpeaker = speakerMatch.group(1) ?? '';
+        final speaker = rawSpeaker.trim().isEmpty ? null : rawSpeaker;
         final text = (speakerMatch.group(2) ?? '').trim();
         if (text.isNotEmpty) {
           result.add(StoryLineElement(
@@ -63,8 +64,11 @@ class StoryParser {
         continue;
       }
 
-      if (_onlyTagRegex.hasMatch(line)) {
-        continue; // other stage direction, skip
+      // Any other line that starts with '[' is stage direction / a tag,
+      // possibly with a trailing dev comment after it (e.g. untranslated
+      // Chinese notes) — always skip it, never show it as narration.
+      if (trimmedLeft.startsWith('[')) {
+        continue;
       }
 
       result.add(StoryLineElement(
