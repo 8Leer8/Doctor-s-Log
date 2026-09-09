@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
-import '../../models/story_part.dart';
+import '../../models/reader_part.dart';
 import 'reader_screen.dart';
+import '../widgets/chapter_detail/detail_action_button.dart';
+import '../widgets/chapter_detail/detail_part_row.dart';
 
 class ChapterDetailScreen extends StatefulWidget {
   final ChapterPreview chapter;
@@ -151,23 +153,23 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _ActionButton(
+                        DetailActionButton(
                           label: 'CONTINUE',
                           icon: Icons.play_arrow,
                           filled: true,
                           onPressed: _continueReading,
                         ),
-                        _ActionButton(
+                        DetailActionButton(
                           label: 'MARK ALL FINISHED',
                           icon: Icons.check,
                           onPressed: _markAllFinished,
                         ),
-                        _ActionButton(
+                        DetailActionButton(
                           label: 'CLEAR ALL',
                           icon: Icons.refresh,
                           onPressed: _clearAll,
                         ),
-                        _ActionButton(
+                        DetailActionButton(
                           label: 'WIKI',
                           icon: Icons.open_in_new,
                           onPressed: () {},
@@ -208,7 +210,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
                     const SizedBox(height: 20),
                     ...List.generate(chapter.parts.length, (index) {
                       final part = chapter.parts[index];
-                      return _PartRow(
+                      return DetailPartRow(
                         part: part,
                         finished: _finished[index],
                         onToggle: () =>
@@ -220,107 +222,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool filled;
-  final VoidCallback onPressed;
-
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-    this.filled = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipPath(
-      clipper: CutCornerClipper(cut: 8),
-      child: Material(
-        color: filled ? AppColors.amber : AppColors.surface,
-        child: InkWell(
-          onTap: onPressed,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: filled
-                ? null
-                : BoxDecoration(
-                    border: Border.all(color: AppColors.border, width: 1),
-                  ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon,
-                    size: 16,
-                    color: filled ? Colors.black : AppColors.textSecondary),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                    color: filled ? Colors.black : AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PartRow extends StatelessWidget {
-  final StoryPart part;
-  final bool finished;
-  final VoidCallback onToggle;
-  final VoidCallback onOpen;
-
-  const _PartRow({
-    required this.part,
-    required this.finished,
-    required this.onToggle,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onOpen,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-        ),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: onToggle,
-              child: Icon(
-                finished ? Icons.check_circle : Icons.circle_outlined,
-                size: 20,
-                color: finished ? Colors.green.shade400 : AppColors.coldGray,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                part.title,
-                style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-              ),
-            ),
-            if (part.filename == null)
-              const Icon(Icons.cloud_off, size: 14, color: AppColors.coldGray),
           ],
         ),
       ),
