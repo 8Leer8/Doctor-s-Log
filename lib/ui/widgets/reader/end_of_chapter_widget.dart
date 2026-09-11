@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../models/reader_settings.dart';
 
 class EndOfChapterWidget extends StatelessWidget {
-  const EndOfChapterWidget({super.key});
+  final ReaderSettings settings;
+
+  const EndOfChapterWidget({super.key, required this.settings});
 
   @override
   Widget build(BuildContext context) {
+    final colors = settings.colors;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 20, bottom: 60),
@@ -14,26 +19,26 @@ class EndOfChapterWidget extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
+            color: colors.background,
+            border: Border.all(color: colors.accent.withValues(alpha: 0.4)),
           ),
-          child: const Column(
+          child: Column(
             children: [
-              Icon(Icons.check_circle, color: AppColors.amber, size: 32),
-              SizedBox(height: 10),
+              Icon(Icons.check_circle, color: colors.accent, size: 32),
+              const SizedBox(height: 10),
               Text(
                 'CHAPTER FINISHED',
                 style: TextStyle(
-                  color: AppColors.amber,
+                  color: colors.accent,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.5,
                 ),
               ),
-              SizedBox(height: 6),
+              const SizedBox(height: 6),
               Text(
                 'You\'ve reached the end.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: TextStyle(color: colors.secondaryText, fontSize: 12),
               ),
             ],
           ),

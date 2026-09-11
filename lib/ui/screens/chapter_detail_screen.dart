@@ -36,8 +36,57 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
     return result;
   }
+  Future<bool> _confirmSkipAheadIfNeeded(int originalIndex) async {
+    final firstUnfinished = _finished.indexWhere((f) => !f);
+    final isSkippingAhead = firstUnfinished != -1 && originalIndex > firstUnfinished;
+    if (!isSkippingAhead) return true;
 
-  void _openPart(int originalIndex) {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.amber, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Skip ahead?',
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Reading from the top keeps the story\'s flow and immersion intact. '
+          'You still have earlier unread parts — jumping ahead may skip context or spoil what happens next.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+        ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('CANCEL',
+                style: TextStyle(color: AppColors.coldGray, fontSize: 12, fontWeight: FontWeight.w600)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('READ ANYWAY',
+                style: TextStyle(color: AppColors.amber, fontSize: 12, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<void> _openPart(int originalIndex) async {
+    final proceed = await _confirmSkipAheadIfNeeded(originalIndex);
+    if (!proceed || !mounted) return;
+
     final playable = _playableParts;
     final startAt = playable.indexWhere((rp) => rp.originalIndex == originalIndex);
 
@@ -48,8 +97,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       return;
     }
 
-    Navigator.of(context)
-        .push<int>(
+    final furthestOriginalIndex = await Navigator.of(context).push<int>(
       MaterialPageRoute(
         builder: (_) => ReaderScreen(
           chapterTitle: widget.chapter.title,
@@ -57,14 +105,13 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
           startAt: startAt,
         ),
       ),
-    )
-        .then((furthestOriginalIndex) {
-      if (furthestOriginalIndex == null) return;
-      setState(() {
-        for (int i = 0; i <= furthestOriginalIndex && i < _finished.length; i++) {
-          _finished[i] = true;
-        }
-      });
+    );
+
+    if (furthestOriginalIndex == null || !mounted) return;
+    setState(() {
+      for (int i = 0; i <= furthestOriginalIndex && i < _finished.length; i++) {
+        _finished[i] = true;
+      }
     });
   }
 

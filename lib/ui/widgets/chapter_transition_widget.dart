@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../models/reader_settings.dart';
 
 class ChapterTransitionWidget extends StatelessWidget {
   final String? previousTitle;
   final String currentTitle;
+  final ReaderSettings settings;
 
   const ChapterTransitionWidget({
     super.key,
     required this.previousTitle,
     required this.currentTitle,
+    required this.settings,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = settings.colors;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 28),
@@ -21,18 +26,18 @@ class ChapterTransitionWidget extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border.all(color: AppColors.border),
+            color: colors.background,
+            border: Border.all(color: colors.secondaryText.withValues(alpha: 0.3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               if (previousTitle != null) ...[
-                const Text(
+                Text(
                   'PREVIOUS',
                   style: TextStyle(
-                    color: AppColors.coldGray,
+                    color: colors.secondaryText,
                     fontSize: 10,
                     letterSpacing: 1.5,
                     fontWeight: FontWeight.w600,
@@ -41,12 +46,12 @@ class ChapterTransitionWidget extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.check_circle, color: AppColors.coldGray, size: 18),
+                    Icon(Icons.check_circle, color: colors.secondaryText, size: 18),
                     const SizedBox(width: 8),
                     Text(
                       previousTitle!,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: colors.secondaryText,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
@@ -54,13 +59,13 @@ class ChapterTransitionWidget extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 20),
-                Container(height: 1, color: AppColors.border),
+                Container(height: 1, color: colors.secondaryText.withValues(alpha: 0.3)),
                 const SizedBox(height: 20),
               ],
-              const Text(
+              Text(
                 'CURRENT',
                 style: TextStyle(
-                  color: AppColors.amber,
+                  color: colors.accent,
                   fontSize: 10,
                   letterSpacing: 1.5,
                   fontWeight: FontWeight.w600,
@@ -69,12 +74,12 @@ class ChapterTransitionWidget extends StatelessWidget {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  const Icon(Icons.play_circle, color: AppColors.amber, size: 18),
+                  Icon(Icons.play_circle, color: colors.accent, size: 18),
                   const SizedBox(width: 8),
                   Text(
                     currentTitle,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
+                    style: TextStyle(
+                      color: colors.text,
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
                     ),

@@ -1,24 +1,29 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_theme.dart';
 import '../../../models/story_element.dart';
+import '../../../models/reader_settings.dart';
 import '../../../utils/inline_markup_parser.dart';
 
 class StoryLineWidget extends StatelessWidget {
   final StoryLineElement line;
-  const StoryLineWidget({super.key, required this.line});
+  final ReaderSettings settings;
+
+  const StoryLineWidget({super.key, required this.line, required this.settings});
 
   @override
   Widget build(BuildContext context) {
-    const baseStyle = TextStyle(
-      fontSize: 16,
-      height: 1.6,
-      color: AppColors.textPrimary,
+    final colors = settings.colors;
+    final lineHeight = settings.lineSpacing.multiplier;
+
+    final baseStyle = TextStyle(
+      fontSize: settings.fontSize,
+      height: lineHeight,
+      color: colors.text,
     );
-    const narrationStyle = TextStyle(
-      fontSize: 16,
-      height: 1.6,
+    final narrationStyle = TextStyle(
+      fontSize: settings.fontSize,
+      height: lineHeight,
       fontStyle: FontStyle.italic,
-      color: AppColors.textSecondary,
+      color: colors.secondaryText,
     );
 
     return Padding(
@@ -30,10 +35,7 @@ class StoryLineWidget extends StatelessWidget {
             if (line.speaker != null)
               TextSpan(
                 text: '${line.speaker}: ',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.amber,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w700, color: colors.speaker),
               ),
             ...buildRichSpans(line.text, line.speaker == null ? narrationStyle : baseStyle),
           ],

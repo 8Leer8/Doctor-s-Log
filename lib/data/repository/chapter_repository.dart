@@ -31,6 +31,7 @@ class ChapterRepository {
         .map((u) => StoryPart(
               title: u.storyName.isNotEmpty ? u.storyName : (u.storyCode.isNotEmpty ? u.storyCode : u.storyId),
               filename: '${u.storyTxt}.txt',
+              avgTag: u.avgTag.isNotEmpty ? u.avgTag : null,
             ))
         .toList();
 

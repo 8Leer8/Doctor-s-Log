@@ -1,7 +1,5 @@
 import '../../../models/story_element.dart';
 
-/// Internal list-item model used by ReaderScreen to interleave
-/// story content, chapter-transition markers, and the end-of-chapter card.
 abstract class ReaderItem {}
 
 class ContentItem extends ReaderItem {
@@ -22,3 +20,8 @@ class TransitionItem extends ReaderItem {
 }
 
 class EndOfChapterMarker extends ReaderItem {}
+class LockedSectionItem extends ReaderItem {
+  final int partIndexInList;
+  final int gateChoiceId;
+  LockedSectionItem({required this.partIndexInList, required this.gateChoiceId});
+}

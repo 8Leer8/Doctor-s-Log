@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/story_element.dart';
+import '../../../models/reader_settings.dart';
 
 class ChoiceWidget extends StatelessWidget {
   final StoryChoiceElement element;
   final String? selectedValue;
   final ValueChanged<String> onSelect;
+  final ReaderSettings settings;
 
   const ChoiceWidget({
     super.key,
     required this.element,
     required this.selectedValue,
     required this.onSelect,
+    required this.settings,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = settings.colors;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12),
       child: ClipPath(
@@ -23,23 +28,23 @@ class ChoiceWidget extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border.all(color: AppColors.amber.withValues(alpha: 0.5)),
+            color: colors.background,
+            border: Border.all(color: colors.accent.withValues(alpha: 0.5)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.fork_right, size: 16, color: AppColors.amber),
-                  SizedBox(width: 6),
+                  Icon(Icons.fork_right, size: 16, color: colors.accent),
+                  const SizedBox(width: 6),
                   Text(
                     'CHOICE',
                     style: TextStyle(
                       fontSize: 10,
                       letterSpacing: 1.5,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.amber,
+                      color: colors.accent,
                     ),
                   ),
                 ],
@@ -56,9 +61,9 @@ class ChoiceWidget extends StatelessWidget {
                       onTap: () => onSelect(opt.value),
                       child: Text(
                         'You didn\'t choose: ${opt.label}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.coldGray,
+                          color: colors.secondaryText,
                           fontStyle: FontStyle.italic,
                         ),
                       ),
@@ -75,26 +80,26 @@ class ChoiceWidget extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.amber.withValues(alpha: 0.15)
-                            : AppColors.surfaceRaised,
+                            ? colors.accent.withValues(alpha: 0.15)
+                            : colors.secondaryText.withValues(alpha: 0.08),
                         border: Border.all(
-                          color: isSelected ? AppColors.amber : AppColors.border,
+                          color: isSelected ? colors.accent : colors.secondaryText.withValues(alpha: 0.3),
                         ),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Row(
                         children: [
                           if (isSelected)
-                            const Padding(
-                              padding: EdgeInsets.only(right: 6),
-                              child: Icon(Icons.check, size: 14, color: AppColors.amber),
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Icon(Icons.check, size: 14, color: colors.accent),
                             ),
                           Expanded(
                             child: Text(
                               opt.label,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isSelected ? AppColors.amber : AppColors.textPrimary,
+                                color: isSelected ? colors.accent : colors.text,
                                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                               ),
                             ),
@@ -107,11 +112,11 @@ class ChoiceWidget extends StatelessWidget {
               }),
               if (selectedValue == null) ...[
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Pick an option to continue reading.',
                   style: TextStyle(
                     fontSize: 11,
-                    color: AppColors.coldGray,
+                    color: colors.secondaryText,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
