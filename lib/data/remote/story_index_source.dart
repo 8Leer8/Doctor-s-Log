@@ -6,8 +6,7 @@ class StoryIndexSource {
   final Dio _dio = Dio();
 
   static const String _base =
-      'https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData_YoStar@master/en_US/gamedata/excel';
-
+      'https://cdn.jsdelivr.net/gh/ArknightsAssets/ArknightsGamedata@master/en/gamedata/excel';
   Map<String, ChapterIndexEntry>? _cache;
 
   Future<Map<String, ChapterIndexEntry>> fetchIndex({bool forceRefresh = false}) async {

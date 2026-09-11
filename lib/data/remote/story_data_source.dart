@@ -4,8 +4,7 @@ class StoryDataSource {
   final Dio _dio = Dio();
 
   static const String _base =
-      'https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData_YoStar@master/en_US/gamedata/story';
-
+      'https://cdn.jsdelivr.net/gh/ArknightsAssets/ArknightsGamedata@master/en/gamedata/story';
   /// [relativePath] is the full path under /story/, e.g.
   /// 'obt/main/level_main_00-01_beg.txt' or 'obt/guide/beg/0_welcome_to_guide.txt'
   Future<String> fetchRawStory(String relativePath) async {

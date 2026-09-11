@@ -1,0 +1,9 @@
+#fix the active status for settings
+fix the redirect to each part on chapter
+#revise the title to put it in middle
+optimize the loading
+
+fix the problem where it should not be able to go past the choice pending for the next page and don't show the other divider except the next divider of the part.
+this will fix the problem where if i scroll past the system will conclude that it will proceed to next part even tho I still did not choose the choices
+then fix where if I jump on part 5 but the past part 4 I did not choose the choices it should not show the other text or paragraph of that part 4 unless i choose it already so
+that it will not break the immersion 
