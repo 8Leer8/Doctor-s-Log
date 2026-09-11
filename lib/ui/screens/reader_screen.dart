@@ -41,18 +41,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   List<ReaderItem>? _rawItems;
 
-  // Keyed "partIndexInList-choiceId" so choices in different parts never collide.
   final Map<String, String> _selections = {};
 
-  int _furthestPartIndex = 0; // originalIndex, reported back to the detail screen
-
-  // Parts BEFORE this index are "the past": always rendered in full, each
-  // independently gated (their own unanswered choices still lock their own
-  // hidden text) but never allowed to stop later past-zone parts from
-  // showing. Parts AT or AFTER this index follow normal cascading rules.
-  // Only grows via an explicit jump (TOC / direct-open) — never via scroll.
+  int _furthestPartIndex = 0;
   int _frontierPartIndexInList = 0;
-
   int _currentPartIndexInList = 0;
   String? _error;
   bool _loading = true;
@@ -82,9 +74,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     super.dispose();
   }
 
-  /// Only updates which part's title/subtitle is shown, and the furthest
-  /// point reached (for progress reporting). Never grows the frontier —
-  /// scrolling must never be able to bypass a lock.
   void _onPositionsChanged() {
     final positions = _itemPositionsListener.itemPositions.value;
     if (positions.isEmpty) return;
@@ -120,21 +109,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
       curve: Curves.easeInOut,
     );
   }
-
-  /// Scrolls to a part ONLY if it's already rendered (in the past zone,
-  /// or reached normally without a lock in between). Never unlocks
-  /// anything. This is what Prev/Next use — ordinary sequential reading
-  /// must never grant bypass privileges.
-  void _scrollToRenderedPart(int partIndexInList) {
-    final listIndex = _partListIndex[partIndexInList];
-    if (listIndex == null) return; // not reachable yet — button should be disabled anyway
-    _scrollToIndex(listIndex);
-  }
-
-  /// Explicit jump (TOC, or opening a specific part from the detail
-  /// screen). Grows the frontier to the target if needed, converting
-  /// everything before it into the non-cascading "past" zone, THEN
-  /// scrolls once the rebuild has made the target's position known.
   void _jumpToPart(int partIndexInList) {
     if (partIndexInList > _frontierPartIndexInList) {
       setState(() => _frontierPartIndexInList = partIndexInList);
@@ -153,19 +127,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   bool get _canGoPrev => _currentPartIndexInList > 0;
-
-  bool get _canGoNext =>
-      _currentPartIndexInList < widget.readerParts.length - 1 &&
-      _partListIndex.containsKey(_currentPartIndexInList + 1);
-
+  bool get _canGoNext => _currentPartIndexInList < widget.readerParts.length - 1;
   void _goPrev() {
     if (!_canGoPrev) return;
-    _scrollToRenderedPart(_currentPartIndexInList - 1);
+    _jumpToPart(_currentPartIndexInList - 1);
   }
 
   void _goNext() {
     if (!_canGoNext) return;
-    _scrollToRenderedPart(_currentPartIndexInList + 1);
+    _jumpToPart(_currentPartIndexInList + 1);
   }
 
   String get _currentPartTitle {
@@ -234,17 +204,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
   }
 
-  /// Single linear pass over the raw (part-ordered) item stream.
-  ///
-  /// - Parts with index < frontier ("the past"): always fully processed —
-  ///   an unanswered choice there still shows a lock placeholder (hidden
-  ///   text stays hidden), but does NOT stop later past-zone parts from
-  ///   being added.
-  /// - Parts with index >= frontier (cascading zone): normal sequential
-  ///   rule. The first unanswered choice locks, we add exactly ONE more
-  ///   teaser divider for the immediately following part (so the reader
-  ///   knows more exists), then generation stops completely — nothing
-  ///   further is added, regardless of how many parts remain.
   List<ReaderItem> _buildVisibleItems() {
     final all = _rawItems ?? [];
     final visible = <ReaderItem>[];
@@ -256,8 +215,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     for (final item in all) {
       if (cascadeStopped) {
-        // Only looking for the next transition marker to use as a single
-        // teaser divider, then we're done entirely.
         if (item is TransitionItem) {
           partIndexMap[item.partIndexInList] = visible.length;
           visible.add(item);
@@ -298,24 +255,33 @@ class _ReaderScreenState extends State<ReaderScreen> {
               choiceIndexMap['$partIndex-${el.id}'] = visible.length - 1;
             }
           }
-          // else: resolved branch not taken — skip just this one item.
           continue;
         }
 
-        // Unanswered choice's gated content — lock it here.
-        final lockedItem = LockedSectionItem(
-          partIndexInList: partIndex,
-          gateChoiceId: el.gateChoiceId!,
-        );
-        if (lockedItemIndex != null) {
-          visible[lockedItemIndex] = lockedItem;
-        } else {
-          visible.add(lockedItem);
-          lockedItemIndex = visible.length - 1;
+        if (isPast) {
+          continue;
+        }
+        
+        final gateChoiceId = el.gateChoiceId;
+        final lastVisible = visible.isNotEmpty ? visible.last : null;
+        final immediatelyAfterOwnChoice = lastVisible is ContentItem &&
+            lastVisible.element is StoryChoiceElement &&
+            (lastVisible.element as StoryChoiceElement).id == gateChoiceId;
+
+        if (!immediatelyAfterOwnChoice) {
+          final lockedItem = LockedSectionItem(
+            partIndexInList: partIndex,
+            gateChoiceId: gateChoiceId!,
+          );
+          if (lockedItemIndex != null) {
+            visible[lockedItemIndex] = lockedItem;
+          } else {
+            visible.add(lockedItem);
+            lockedItemIndex = visible.length - 1;
+          }
         }
 
         if (!isPast) {
-          // In the cascading zone — this stops everything going forward.
           cascadeStopped = true;
         }
         continue;
