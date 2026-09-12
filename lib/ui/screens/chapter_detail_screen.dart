@@ -11,6 +11,9 @@ import '../widgets/chapter_detail/detail_part_row.dart';
 import '../widgets/chapter_detail/chapter_header_image.dart';
 import '../widgets/chapter_detail/part_filter_sort_sheet.dart';
 
+const double _kToolbarHeight = 64;
+const double _kFallbackOverlayHeight = 140;
+
 String _formatActType(String raw) {
   switch (raw) {
     case 'MAIN_STORY':
@@ -37,6 +40,8 @@ class ChapterDetailScreen extends StatefulWidget {
 class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   late List<bool> _finished;
   final Set<int> _downloaded = {};
+  final _scrollController = ScrollController();
+  final _overlayKey = GlobalKey();
 
   final _dataSource = StoryDataSource();
   int? _totalWordCount;
@@ -44,6 +49,8 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   String? _description;
   bool _descriptionLoaded = false;
+  bool _showTitleInBar = false;
+  double? _overlayHeight;
 
   PartFilterMode _filterMode = PartFilterMode.all;
   PartSortOrder _sortOrder = PartSortOrder.ascending;
@@ -54,6 +61,44 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     _finished = widget.chapter.parts.map((p) => p.finished).toList();
     _computeWordCount();
     _loadDescription();
+    _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureOverlay());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  double _headerHeight(BuildContext context) {
+    return MediaQuery.of(context).size.width;
+  }
+
+  void _measureOverlay() {
+    final box = _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize && box.size.height != _overlayHeight) {
+      setState(() => _overlayHeight = box.size.height);
+    }
+  }
+
+  /// The scroll offset at which the overlay (title/label/description) has
+  /// fully scrolled behind the toolbar. Since the overlay sits flush
+  /// against the BOTTOM edge of the fixed image (spacer = imageHeight -
+  /// overlayHeight), this simplifies to exactly imageHeight - toolbarHeight
+  /// — the overlay's own height cancels out, so this doesn't depend on
+  /// description length at all.
+  double _titleAppearThreshold(BuildContext context) {
+    return _headerHeight(context) - _kToolbarHeight;
+  }
+
+  void _onScroll() {
+    final threshold = _titleAppearThreshold(context);
+    final pastThreshold = _scrollController.offset > threshold;
+    if (pastThreshold != _showTitleInBar) {
+      setState(() => _showTitleInBar = pastThreshold);
+    }
   }
 
   Future<void> _loadDescription() async {
@@ -64,6 +109,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         _description = desc;
         _descriptionLoaded = true;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureOverlay());
     }
   }
 
@@ -231,168 +277,201 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     final progressRatio = total == 0 ? 0.0 : _finishedCount / total;
     final displayIndices = _displayIndices;
     final formattedType = _formatActType(chapter.subtitle);
+    final headerHeight = _headerHeight(context);
+    final overlayHeight = _overlayHeight ?? _kFallbackOverlayHeight;
+    final iconColor = _showTitleInBar ? AppColors.coldGray : Colors.white;
+    final backIconColor = _showTitleInBar ? AppColors.textPrimary : Colors.white;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      // The top bar floats over the content instead of pushing it down,
-      // so the header image is visible directly behind it (Mihon-style).
       body: Stack(
         children: [
-          SafeArea(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Stack(
+          // Fixed image layer — never scrolls, never gets clipped.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: headerHeight,
+            child: ChapterHeaderImage(chapterId: chapter.number),
+          ),
+          SingleChildScrollView(
+            controller: _scrollController,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Transparent spacer, sized so the overlay below sits
+                // flush against the bottom edge of the fixed image.
+                SizedBox(height: (headerHeight - overlayHeight).clamp(0, headerHeight)),
+                // Overlay holding title/label/description. Carries its
+                // OWN gradient scrim (independent of the fixed image's
+                // gradient) so legibility is guaranteed at any scroll
+                // position, instead of relying on wherever the image's
+                // fixed darkening happens to line up.
+                Container(
+                  key: _overlayKey,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black54, Colors.black87],
+                      stops: [0.0, 0.3, 1.0],
+                    ),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      ChapterHeaderImage(
-                        chapterId: chapter.number,
-                        title: chapter.title,
-                        subtitleLabel: formattedType,
+                      Text(
+                        chapter.title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                          color: Colors.white,
+                        ),
                       ),
-                      // The fade to the page background sits only at the
-                      // very bottom edge of the image, overlapping into
-                      // where the action buttons begin — the title and
-                      // description above stay clear of any fade.
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 60,
-                        child: IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  AppColors.background,
-                                ],
-                              ),
-                            ),
-                          ),
+                      const SizedBox(height: 6),
+                      Text(
+                        formattedType.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.4,
+                          color: AppColors.amber,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _descriptionLoaded && _description != null
+                            ? _description!
+                            : (_descriptionLoaded ? 'No description available.' : ''),
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.45,
+                          color: (_descriptionLoaded && _description == null)
+                              ? Colors.white60
+                              : Colors.white.withValues(alpha: 0.9),
+                          fontStyle: (_descriptionLoaded && _description == null)
+                              ? FontStyle.italic
+                              : FontStyle.normal,
                         ),
                       ),
                     ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 6),
-                        Text(
-                          _descriptionLoaded && _description != null
-                              ? _description!
-                              : (_descriptionLoaded ? 'No description available.' : ''),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: (_descriptionLoaded && _description == null)
-                                ? AppColors.coldGray
-                                : AppColors.textSecondary,
-                            fontStyle: (_descriptionLoaded && _description == null)
-                                ? FontStyle.italic
-                                : FontStyle.normal,
-                            height: 1.4,
+                ),
+                // From here on, opaque — fully covers the fixed image.
+                Container(
+                  width: double.infinity,
+                  color: AppColors.background,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          DetailActionButton(
+                            label: 'MARK ALL READ',
+                            icon: Icons.check,
+                            onPressed: _markAllFinished,
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            DetailActionButton(
-                              label: 'CONTINUE',
-                              icon: Icons.play_arrow,
-                              filled: true,
-                              onPressed: _continueReading,
-                            ),
-                            DetailActionButton(
-                              label: 'MARK ALL READ',
-                              icon: Icons.check,
-                              onPressed: _markAllFinished,
-                            ),
-                            DetailActionButton(
-                              label: 'CLEAR ALL',
-                              icon: Icons.refresh,
-                              onPressed: _clearAll,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(2),
-                          child: LinearProgressIndicator(
-                            value: progressRatio,
-                            minHeight: 4,
-                            backgroundColor: AppColors.border,
-                            valueColor: const AlwaysStoppedAnimation(AppColors.amber),
+                          DetailActionButton(
+                            label: 'CLEAR ALL',
+                            icon: Icons.refresh,
+                            onPressed: _clearAll,
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: progressRatio,
+                          minHeight: 4,
+                          backgroundColor: AppColors.border,
+                          valueColor: const AlwaysStoppedAnimation(AppColors.amber),
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _computingWordCount
-                                  ? 'Calculating...'
-                                  : '${_totalWordCount ?? 0} words · about ${WordCountEstimator.estimateMinutes(_totalWordCount ?? 0)}m',
-                              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                            ),
-                            Text(
-                              '$_finishedCount OF $total FINISHED',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.amber,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          '$total PARTS',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1,
-                            color: AppColors.amber,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _computingWordCount
+                                ? 'Calculating...'
+                                : '${_totalWordCount ?? 0} words · about ${WordCountEstimator.estimateMinutes(_totalWordCount ?? 0)}m',
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                           ),
+                          Text(
+                            '$_finishedCount OF $total FINISHED',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.amber,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        '$total PARTS',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                          color: AppColors.amber,
                         ),
-                        const SizedBox(height: 4),
-                        ...displayIndices.map((index) {
-                          final part = chapter.parts[index];
-                          return DetailPartRow(
-                            part: part,
-                            finished: _finished[index],
-                            downloaded: _downloaded.contains(index),
-                            onToggleFinished: () =>
-                                setState(() => _finished[index] = !_finished[index]),
-                            onToggleDownload: () => setState(() {
-                              if (_downloaded.contains(index)) {
-                                _downloaded.remove(index);
-                              } else {
-                                _downloaded.add(index);
-                              }
-                            }),
-                            onOpen: () => _openPart(index),
-                          );
-                        }),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...displayIndices.map((index) {
+                        final part = chapter.parts[index];
+                        return DetailPartRow(
+                          part: part,
+                          finished: _finished[index],
+                          downloaded: _downloaded.contains(index),
+                          onToggleFinished: () =>
+                              setState(() => _finished[index] = !_finished[index]),
+                          onToggleDownload: () => setState(() {
+                            if (_downloaded.contains(index)) {
+                              _downloaded.remove(index);
+                            } else {
+                              _downloaded.add(index);
+                            }
+                          }),
+                          onOpen: () => _openPart(index),
+                        );
+                      }),
+                      const SizedBox(height: 100),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
           SafeArea(
             bottom: false,
             child: _TopBar(
+              title: chapter.title,
+              showTitle: _showTitleInBar,
+              backIconColor: backIconColor,
+              iconColor: iconColor,
               onBack: () => Navigator.of(context).pop(),
               onDownloadAll: _downloadAll,
               onFilterTap: _openFilterSort,
+            ),
+          ),
+          Positioned(
+            right: 20,
+            bottom: 20,
+            child: DetailActionButton(
+              label: 'CONTINUE',
+              icon: Icons.play_arrow,
+              filled: true,
+              large: true,
+              onPressed: _continueReading,
             ),
           ),
         ],
@@ -402,11 +481,19 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 }
 
 class _TopBar extends StatelessWidget {
+  final String title;
+  final bool showTitle;
+  final Color backIconColor;
+  final Color iconColor;
   final VoidCallback onBack;
   final VoidCallback onDownloadAll;
   final VoidCallback onFilterTap;
 
   const _TopBar({
+    required this.title,
+    required this.showTitle,
+    required this.backIconColor,
+    required this.iconColor,
     required this.onBack,
     required this.onDownloadAll,
     required this.onFilterTap,
@@ -414,29 +501,47 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 52,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      height: _kToolbarHeight,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      color: Colors.transparent,
+      color: showTitle ? AppColors.background : Colors.transparent,
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            iconSize: 28,
+            icon: Icon(Icons.arrow_back, color: backIconColor),
             onPressed: onBack,
           ),
-          const Spacer(),
+          Expanded(
+            child: AnimatedOpacity(
+              opacity: showTitle ? 1 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
           IconButton(
-            icon: const Icon(Icons.download_outlined, color: Colors.white),
+            iconSize: 28,
+            icon: Icon(Icons.download_outlined, color: iconColor),
             tooltip: 'Download all',
             onPressed: onDownloadAll,
           ),
           IconButton(
-            icon: const Icon(Icons.tune, color: Colors.white),
+            iconSize: 28,
+            icon: Icon(Icons.tune, color: iconColor),
             tooltip: 'Filter & sort',
             onPressed: onFilterTap,
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.menu, color: Colors.white),
+            icon: Icon(Icons.menu, size: 28, color: iconColor),
             color: AppColors.surface,
             onSelected: (value) {},
             itemBuilder: (context) => const [

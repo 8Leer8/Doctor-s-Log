@@ -32,18 +32,23 @@ class PartFilterSortSheet extends StatefulWidget {
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (context, anim1, anim2) {
-        return Align(
-          alignment: Alignment.topCenter,
-          child: Material(
-            color: AppColors.surface,
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-            child: SafeArea(
-              bottom: false,
-              child: PartFilterSortSheet(
-                filterMode: filterMode,
-                sortOrder: sortOrder,
-                onFilterChanged: onFilterChanged,
-                onSortChanged: onSortChanged,
+        return SafeArea(
+          bottom: false,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Material(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                child: PartFilterSortSheet(
+                  filterMode: filterMode,
+                  sortOrder: sortOrder,
+                  onFilterChanged: onFilterChanged,
+                  onSortChanged: onSortChanged,
+                ),
               ),
             ),
           ),

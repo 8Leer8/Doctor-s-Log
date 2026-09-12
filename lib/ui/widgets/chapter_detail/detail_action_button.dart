@@ -5,6 +5,7 @@ class DetailActionButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool filled;
+  final bool large;
   final VoidCallback onPressed;
 
   const DetailActionButton({
@@ -13,18 +14,22 @@ class DetailActionButton extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     this.filled = false,
+    this.large = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return ClipPath(
-      clipper: CutCornerClipper(cut: 8),
+      clipper: CutCornerClipper(cut: large ? 10 : 8),
       child: Material(
         color: filled ? AppColors.amber : AppColors.surface,
         child: InkWell(
           onTap: onPressed,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: EdgeInsets.symmetric(
+              horizontal: large ? 22 : 14,
+              vertical: large ? 16 : 10,
+            ),
             decoration: filled
                 ? null
                 : BoxDecoration(
@@ -34,14 +39,14 @@ class DetailActionButton extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon,
-                    size: 16,
+                    size: large ? 22 : 16,
                     color: filled ? Colors.black : AppColors.textSecondary),
-                const SizedBox(width: 6),
+                SizedBox(width: large ? 8 : 6),
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontSize: large ? 14 : 11,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                     color: filled ? Colors.black : AppColors.textPrimary,
                   ),
