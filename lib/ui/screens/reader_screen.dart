@@ -40,12 +40,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final _itemPositionsListener = ItemPositionsListener.create();
 
   List<ReaderItem>? _rawItems;
-
   final Map<String, String> _selections = {};
 
-  int _furthestPartIndex = 0;
+  // Governs CONTENT GENERATION (choice gating / past-vs-cascading zone).
+  // Grows only via explicit jump (TOC, prev/next). Parts before this are
+  // "the past" — rendered in full regardless of their own unanswered
+  // choices, and never stop later past-zone parts from rendering.
   int _frontierPartIndexInList = 0;
+
+  // Which part is currently at/near the top of the viewport — drives the
+  // title bar, part counter, and prev/next buttons.
   int _currentPartIndexInList = 0;
+
+  // Governs what gets reported back as "read" when the screen closes.
+  // Starts null. Only advances when the reader has GENUINELY scrolled
+  // past a part boundary, or reached the true end of the chapter —
+  // completely independent from the frontier above, so simply opening a
+  // part (even one reached via jump) never marks it read on its own.
+  int? _confirmedReadOriginalIndex;
+
   String? _error;
   bool _loading = true;
   bool _showControls = false;
@@ -53,13 +66,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   Map<int, int> _partListIndex = {};
   Map<String, int> _choiceListIndex = {};
+  int? _endMarkerListIndex;
 
   @override
   void initState() {
     super.initState();
     _currentPartIndexInList = widget.startAt;
     _frontierPartIndexInList = widget.startAt;
-    _furthestPartIndex = widget.startAt;
     _itemPositionsListener.itemPositions.addListener(_onPositionsChanged);
     _fetchAll();
     if (_settings.keepScreenAwake) {
@@ -93,12 +106,31 @@ class _ReaderScreenState extends State<ReaderScreen> {
       }
     });
 
-    if (bestPart != null && bestPart != _currentPartIndexInList) {
-      final originalIndex = widget.readerParts[bestPart!].originalIndex;
-      if (originalIndex > _furthestPartIndex) {
-        _furthestPartIndex = originalIndex;
+    if (bestPart != null) {
+      // The part just before whatever is now at the top has genuinely
+      // been scrolled past — confirm it (and transitively everything
+      // before it) as read. Only ever moves forward, never resets on
+      // scrolling back up.
+      if (bestPart! > 0) {
+        final justBeforeOriginal = widget.readerParts[bestPart! - 1].originalIndex;
+        if (_confirmedReadOriginalIndex == null || justBeforeOriginal > _confirmedReadOriginalIndex!) {
+          _confirmedReadOriginalIndex = justBeforeOriginal;
+        }
       }
-      setState(() => _currentPartIndexInList = bestPart!);
+
+      if (bestPart != _currentPartIndexInList) {
+        setState(() => _currentPartIndexInList = bestPart!);
+      }
+    }
+
+    if (_endMarkerListIndex != null &&
+        positions.any((p) => p.index == _endMarkerListIndex)) {
+      // Reached the true end of everything currently loaded — the last
+      // part itself is now confirmed read too.
+      final lastOriginal = widget.readerParts.last.originalIndex;
+      if (_confirmedReadOriginalIndex == null || lastOriginal > _confirmedReadOriginalIndex!) {
+        _confirmedReadOriginalIndex = lastOriginal;
+      }
     }
   }
 
@@ -109,6 +141,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       curve: Curves.easeInOut,
     );
   }
+
   void _jumpToPart(int partIndexInList) {
     if (partIndexInList > _frontierPartIndexInList) {
       setState(() => _frontierPartIndexInList = partIndexInList);
@@ -128,6 +161,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   bool get _canGoPrev => _currentPartIndexInList > 0;
   bool get _canGoNext => _currentPartIndexInList < widget.readerParts.length - 1;
+
   void _goPrev() {
     if (!_canGoPrev) return;
     _jumpToPart(_currentPartIndexInList - 1);
@@ -204,6 +238,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
   }
 
+  /// Full visible item list. Gating uses the frontier: parts before it
+  /// ("the past") always render in full; the frontier part and everything
+  /// after follows normal sequential rules — render until the first
+  /// unanswered choice, then stop generating content entirely from there
+  /// on (across remaining parts too), showing exactly one more transition
+  /// marker as a teaser.
   List<ReaderItem> _buildVisibleItems() {
     final all = _rawItems ?? [];
     final visible = <ReaderItem>[];
@@ -259,9 +299,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
         }
 
         if (isPast) {
+          // Unresolved choice already behind us — no card, just silently
+          // omit the gated content. Not actionable there, not clutter.
           continue;
         }
-        
+
         final gateChoiceId = el.gateChoiceId;
         final lastVisible = visible.isNotEmpty ? visible.last : null;
         final immediatelyAfterOwnChoice = lastVisible is ContentItem &&
@@ -281,15 +323,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
           }
         }
 
-        if (!isPast) {
-          cascadeStopped = true;
-        }
+        cascadeStopped = true;
         continue;
       }
     }
 
     if (!cascadeStopped) {
       visible.add(EndOfChapterMarker());
+      _endMarkerListIndex = visible.length - 1;
+    } else {
+      _endMarkerListIndex = null;
     }
 
     _partListIndex = partIndexMap;
@@ -303,7 +346,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        Navigator.of(context).pop(_furthestPartIndex);
+        Navigator.of(context).pop(_confirmedReadOriginalIndex);
       },
       child: Scaffold(
         backgroundColor: _settings.colors.background,
@@ -319,7 +362,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 visible: _showControls,
                 title: _currentPartTitle,
                 subtitle: _currentPartSubtitle,
-                onBack: () => Navigator.of(context).pop(_furthestPartIndex),
+                onBack: () => Navigator.of(context).pop(_confirmedReadOriginalIndex),
                 onSettingsTap: _openSettings,
                 onTocTap: _openToc,
               ),
