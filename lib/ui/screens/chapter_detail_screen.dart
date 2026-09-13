@@ -7,6 +7,7 @@ import '../../data/parser/word_count_estimator.dart';
 import '../../data/local/chapter_descriptions_loader.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../../data/local/download_store.dart';
+import '../../utils/act_type_formatter.dart';
 import 'reader_screen.dart';
 import '../widgets/chapter_detail/detail_action_button.dart';
 import '../widgets/chapter_detail/detail_part_row.dart';
@@ -15,20 +16,6 @@ import '../widgets/chapter_detail/part_filter_sort_sheet.dart';
 
 const double _kToolbarHeight = 64;
 const double _kFallbackOverlayHeight = 140;
-
-String _formatActType(String raw) {
-  switch (raw) {
-    case 'MAIN_STORY':
-      return 'Main Story';
-    case 'ACTIVITY_STORY':
-      return 'Event Story';
-    default:
-      return raw
-          .split('_')
-          .map((w) => w.isEmpty ? w : '${w[0]}${w.substring(1).toLowerCase()}')
-          .join(' ');
-  }
-}
 
 class ChapterDetailScreen extends StatefulWidget {
   final ChapterPreview chapter;
@@ -388,7 +375,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     final total = chapter.parts.length;
     final progressRatio = total == 0 ? 0.0 : _finishedCount / total;
     final displayIndices = _displayIndices;
-    final formattedType = _formatActType(chapter.subtitle);
+    final formattedType = formatActType(chapter.subtitle);
     final headerHeight = _headerHeight(context);
     final overlayHeight = _overlayHeight ?? _kFallbackOverlayHeight;
     final iconColor = _showTitleInBar ? AppColors.coldGray : Colors.white;

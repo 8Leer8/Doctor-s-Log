@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
 import '../../data/repository/chapter_repository.dart';
+import '../../data/local/reading_progress_store.dart';
 import '../widgets/chapter_card.dart';
 import 'chapter_detail_screen.dart';
 
@@ -17,6 +18,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   List<ChapterPreview>? _mainTheme;
   List<ChapterPreview>? _sideStories;
+  final Map<String, int> _finishedCounts = {};
   String? _error;
 
   @override
@@ -33,8 +35,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _mainTheme = main;
         _sideStories = side;
       });
+      await _loadProgressFor([...main, ...side]);
     } catch (e) {
       setState(() => _error = e.toString());
+    }
+  }
+
+  Future<void> _loadProgressFor(List<ChapterPreview> chapters) async {
+    for (final chapter in chapters) {
+      final finished = await ReadingProgressStore.getFinishedParts(chapter.number);
+      if (!mounted) return;
+      setState(() => _finishedCounts[chapter.number] = finished.length);
     }
   }
 
@@ -69,14 +80,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
     if (_mainTheme == null || _sideStories == null) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.amber),
-      );
+      return const Center(child: CircularProgressIndicator(color: AppColors.amber));
     }
     return TabBarView(
       children: [
-        _ChapterGrid(chapters: _mainTheme!),
-        _ChapterGrid(chapters: _sideStories!),
+        _ChapterGrid(chapters: _mainTheme!, finishedCounts: _finishedCounts),
+        _ChapterGrid(chapters: _sideStories!, finishedCounts: _finishedCounts),
       ],
     );
   }
@@ -150,7 +159,9 @@ class _SectionTabBar extends StatelessWidget {
 
 class _ChapterGrid extends StatelessWidget {
   final List<ChapterPreview> chapters;
-  const _ChapterGrid({required this.chapters});
+  final Map<String, int> finishedCounts;
+
+  const _ChapterGrid({required this.chapters, required this.finishedCounts});
 
   @override
   Widget build(BuildContext context) {
@@ -160,24 +171,28 @@ class _ChapterGrid extends StatelessWidget {
       );
     }
     return GridView.builder(
-      padding: const EdgeInsets.all(10),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 200,
-        mainAxisExtent: 270,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.72,
       ),
       itemCount: chapters.length,
-      itemBuilder: (context, index) => ChapterCard(
-        chapter: chapters[index],
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ChapterDetailScreen(chapter: chapters[index]),
-            ),
-          );
-        },
-      ),
+      itemBuilder: (context, index) {
+        final chapter = chapters[index];
+        return ChapterCard(
+          chapter: chapter,
+          finishedCount: finishedCounts[chapter.number] ?? 0,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ChapterDetailScreen(chapter: chapter),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
