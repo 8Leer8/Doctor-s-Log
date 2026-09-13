@@ -1,11 +1,11 @@
 import '../../../models/story_element.dart';
 
 abstract class ReaderItem {}
-
 class ContentItem extends ReaderItem {
   final StoryElement element;
   final int partIndexInList;
-  ContentItem(this.element, this.partIndexInList);
+  final int elementIndexInPart; // position within this part's own raw parsed list — stable across sessions
+  ContentItem(this.element, this.partIndexInList, this.elementIndexInPart);
 }
 
 class TransitionItem extends ReaderItem {

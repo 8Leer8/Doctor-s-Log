@@ -5,6 +5,8 @@ import '../../models/reader_part.dart';
 import '../../data/remote/story_data_source.dart';
 import '../../data/parser/word_count_estimator.dart';
 import '../../data/local/chapter_descriptions_loader.dart';
+import '../../data/local/reading_progress_store.dart';
+import '../../data/local/download_store.dart';
 import 'reader_screen.dart';
 import '../widgets/chapter_detail/detail_action_button.dart';
 import '../widgets/chapter_detail/detail_part_row.dart';
@@ -38,8 +40,8 @@ class ChapterDetailScreen extends StatefulWidget {
 }
 
 class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
-  late List<bool> _finished;
-  final Set<int> _downloaded = {};
+  List<bool> _finished = [];
+  final Map<int, DownloadState> _downloadStates = {};
   final _scrollController = ScrollController();
   final _overlayKey = GlobalKey();
 
@@ -59,6 +61,11 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   void initState() {
     super.initState();
     _finished = widget.chapter.parts.map((p) => p.finished).toList();
+    for (int i = 0; i < widget.chapter.parts.length; i++) {
+      _downloadStates[i] = DownloadState.notDownloaded;
+    }
+    _loadFinishedProgress();
+    _loadDownloadStates();
     _computeWordCount();
     _loadDescription();
     _scrollController.addListener(_onScroll);
@@ -72,9 +79,100 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     super.dispose();
   }
 
-  double _headerHeight(BuildContext context) {
-    return MediaQuery.of(context).size.width;
+  Future<void> _loadFinishedProgress() async {
+    final finishedSet = await ReadingProgressStore.getFinishedParts(widget.chapter.number);
+    if (!mounted || finishedSet.isEmpty) return;
+    setState(() {
+      for (final i in finishedSet) {
+        if (i >= 0 && i < _finished.length) _finished[i] = true;
+      }
+    });
   }
+
+  Future<void> _saveFinishedProgress() async {
+    final finishedIndices = <int>{};
+    for (int i = 0; i < _finished.length; i++) {
+      if (_finished[i]) finishedIndices.add(i);
+    }
+    await ReadingProgressStore.setFinishedParts(widget.chapter.number, finishedIndices);
+  }
+
+  Future<void> _loadDownloadStates() async {
+    for (int i = 0; i < widget.chapter.parts.length; i++) {
+      final filename = widget.chapter.parts[i].filename;
+      if (filename == null) continue;
+      final isDownloaded = await DownloadStore.isDownloaded(filename);
+      if (isDownloaded && mounted) {
+        setState(() => _downloadStates[i] = DownloadState.downloaded);
+      }
+    }
+  }
+
+  Future<void> _toggleDownload(int index) async {
+    final filename = widget.chapter.parts[index].filename;
+    if (filename == null) return;
+
+    final currentState = _downloadStates[index] ?? DownloadState.notDownloaded;
+
+    if (currentState == DownloadState.downloaded) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          title: const Text('Delete download?',
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+          content: const Text(
+            'This will remove the offline copy of this part. You can re-download it anytime.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('CANCEL',
+                  style: TextStyle(color: AppColors.coldGray, fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('DELETE',
+                  style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      await DownloadStore.deleteContent(filename);
+      if (mounted) {
+        setState(() => _downloadStates[index] = DownloadState.notDownloaded);
+      }
+      return;
+    }
+
+    if (currentState == DownloadState.downloading) return;
+
+    setState(() => _downloadStates[index] = DownloadState.downloading);
+    try {
+      final content = await _dataSource.fetchRawStory(filename);
+      await DownloadStore.saveContent(filename, content);
+      if (mounted) {
+        setState(() => _downloadStates[index] = DownloadState.downloaded);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _downloadStates[index] = DownloadState.notDownloaded);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Download failed. Check your connection and try again.')),
+        );
+      }
+    }
+  }
+
+  double _headerHeight(BuildContext context) => MediaQuery.of(context).size.width;
 
   void _measureOverlay() {
     final box = _overlayKey.currentContext?.findRenderObject() as RenderBox?;
@@ -83,12 +181,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
   }
 
-  /// The scroll offset at which the overlay (title/label/description) has
-  /// fully scrolled behind the toolbar. Since the overlay sits flush
-  /// against the BOTTOM edge of the fixed image (spacer = imageHeight -
-  /// overlayHeight), this simplifies to exactly imageHeight - toolbarHeight
-  /// — the overlay's own height cancels out, so this doesn't depend on
-  /// description length at all.
   double _titleAppearThreshold(BuildContext context) {
     return _headerHeight(context) - _kToolbarHeight;
   }
@@ -207,7 +299,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     return result ?? false;
   }
 
-  Future<void> _openPart(int originalIndex) async {
+  Future<void> _openPart(int originalIndex, {bool useResumePosition = false}) async {
     final proceed = await _confirmSkipAheadIfNeeded(originalIndex);
     if (!proceed || !mounted) return;
 
@@ -221,12 +313,29 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       return;
     }
 
+    final initialChoices = await ReadingProgressStore.getChoices(widget.chapter.number);
+    int? resumePart;
+    int? resumeElement;
+    if (useResumePosition) {
+      final resume = await ReadingProgressStore.getResumePosition(widget.chapter.number);
+      if (resume != null) {
+        resumePart = resume.$1;
+        resumeElement = resume.$2;
+      }
+    }
+
+    if (!mounted) return;
+
     final furthestOriginalIndex = await Navigator.of(context).push<int>(
       MaterialPageRoute(
         builder: (_) => ReaderScreen(
+          chapterId: widget.chapter.number,
           chapterTitle: widget.chapter.title,
           readerParts: playable,
           startAt: startAt,
+          initialChoices: initialChoices,
+          resumePartOriginalIndex: resumePart,
+          resumeElementIndex: resumeElement,
         ),
       ),
     );
@@ -237,19 +346,22 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         _finished[i] = true;
       }
     });
+    await _saveFinishedProgress();
   }
 
   void _continueReading() {
     final nextIndex = _finished.indexWhere((f) => !f);
-    _openPart(nextIndex == -1 ? 0 : nextIndex);
+    _openPart(nextIndex == -1 ? 0 : nextIndex, useResumePosition: true);
   }
 
   void _markAllFinished() {
     setState(() => _finished = List.filled(_finished.length, true));
+    _saveFinishedProgress();
   }
 
   void _clearAll() {
     setState(() => _finished = List.filled(_finished.length, false));
+    _saveFinishedProgress();
   }
 
   void _openFilterSort() {
@@ -262,12 +374,12 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     );
   }
 
-  void _downloadAll() {
-    setState(() {
-      for (int i = 0; i < widget.chapter.parts.length; i++) {
-        if (widget.chapter.parts[i].filename != null) _downloaded.add(i);
+  Future<void> _downloadAll() async {
+    for (int i = 0; i < widget.chapter.parts.length; i++) {
+      if (_downloadStates[i] == DownloadState.notDownloaded) {
+        await _toggleDownload(i);
       }
-    });
+    }
   }
 
   @override
@@ -286,7 +398,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Fixed image layer — never scrolls, never gets clipped.
           Positioned(
             top: 0,
             left: 0,
@@ -299,14 +410,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Transparent spacer, sized so the overlay below sits
-                // flush against the bottom edge of the fixed image.
                 SizedBox(height: (headerHeight - overlayHeight).clamp(0, headerHeight)),
-                // Overlay holding title/label/description. Carries its
-                // OWN gradient scrim (independent of the fixed image's
-                // gradient) so legibility is guaranteed at any scroll
-                // position, instead of relying on wherever the image's
-                // fixed darkening happens to line up.
                 Container(
                   key: _overlayKey,
                   width: double.infinity,
@@ -361,7 +465,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
                     ],
                   ),
                 ),
-                // From here on, opaque — fully covers the fixed image.
                 Container(
                   width: double.infinity,
                   color: AppColors.background,
@@ -431,16 +534,12 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
                         return DetailPartRow(
                           part: part,
                           finished: _finished[index],
-                          downloaded: _downloaded.contains(index),
-                          onToggleFinished: () =>
-                              setState(() => _finished[index] = !_finished[index]),
-                          onToggleDownload: () => setState(() {
-                            if (_downloaded.contains(index)) {
-                              _downloaded.remove(index);
-                            } else {
-                              _downloaded.add(index);
-                            }
-                          }),
+                          downloadState: _downloadStates[index] ?? DownloadState.notDownloaded,
+                          onToggleFinished: () {
+                            setState(() => _finished[index] = !_finished[index]);
+                            _saveFinishedProgress();
+                          },
+                          onDownloadTap: () => _toggleDownload(index),
                           onOpen: () => _openPart(index),
                         );
                       }),
