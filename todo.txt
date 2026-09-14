@@ -1,9 +1,29 @@
 #fix the active status for settings
-fix the redirect to each part on chapter
+#fix the redirect to each part on chapter
 #revise the title to put it in middle
-optimize the loading
+#optimize the loading
 
-fix the problem where it should not be able to go past the choice pending for the next page and don't show the other divider except the next divider of the part.
-this will fix the problem where if i scroll past the system will conclude that it will proceed to next part even tho I still did not choose the choices
-then fix where if I jump on part 5 but the past part 4 I did not choose the choices it should not show the other text or paragraph of that part 4 unless i choose it already so
-that it will not break the immersion 
+#fix the problem where it should not be able to go past the choice pending for the next page and don't show the other divider except the next divider of the part.
+#this will fix the problem where if i scroll past the system will conclude that it will proceed to next part even tho I still did not choose the choices
+#then fix where if I jump on part 5 but the past part 4 I did not choose the choices it should not show the other text or paragraph of that part 4 unless i choose it already so
+#that it will not break the immersion 
+
+
+the progress bar on library is not updating if i press back
+put img on side stories
+make the top nav fill at the very start of the scroll on TOC and at the very start it will not show the title on top nav until on mark all read
+fix the UI on library to remove the line on main story
+fix the color of the top nav of android similar to top nav of my app
+ask this:
+Please provide a dense, developer-focused architectural summary of our app project to migrate to a fresh chat. 
+
+Include:
+1. Tech Stack: Frontend, backend, database, and major libraries/APIs used.
+2. App Architecture: Core file structure, data flow, and state management choices.
+3. What is Working: The modules, features, or endpoints successfully implemented so far.
+4. Active Code/Bugs: The specific file, function, or block of code we are currently working on or debugging.
+5. Immediate Tasks: The exact next coding step or feature to implement.
+
+Format this in clean Markdown with code blocks where necessary so I can easily paste it to continue seamlessly.
+
+continue this on new chat

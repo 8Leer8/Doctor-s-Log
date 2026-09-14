@@ -38,7 +38,17 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   String? _description;
   bool _descriptionLoaded = false;
-  bool _showTitleInBar = false;
+
+  // Drives the top bar's background fill. Fills FAST (within ~40px
+  // of scrolling), so the bar solidifies almost immediately once the
+  // user starts scrolling.
+  double _collapseFraction = 0;
+
+  // Drives the title appearance. SEPARATE from the fill above — the
+  // title waits until the user has scrolled well past the header image
+  // and the action buttons row before it starts fading in.
+  double _titleFraction = 0;
+
   double? _overlayHeight;
 
   PartFilterMode _filterMode = PartFilterMode.all;
@@ -173,10 +183,30 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   }
 
   void _onScroll() {
+    final offset = _scrollController.offset;
+
+    // --- BACKGROUND FILL: fast ---
+    // Fills completely within ~40px of scrolling, so the bar
+    // solidifies as soon as the user starts moving.
+    const fillRangePx = 40.0;
+    final fillRaw = offset / fillRangePx;
+    final fillFraction = fillRaw.clamp(0.0, 1.0);
+
+    // --- TITLE: slower, appears later ---
+    // Starts fading in only AFTER we've scrolled past the header image
+    // + some extra buffer (which lands us around the action buttons
+    // row), then takes another ~60px to fully appear.
     final threshold = _titleAppearThreshold(context);
-    final pastThreshold = _scrollController.offset > threshold;
-    if (pastThreshold != _showTitleInBar) {
-      setState(() => _showTitleInBar = pastThreshold);
+    final titleStart = threshold + 80;
+    const titleRangePx = 60.0;
+    final titleRaw = (offset - titleStart) / titleRangePx;
+    final titleFraction = titleRaw.clamp(0.0, 1.0);
+
+    if (fillFraction != _collapseFraction || titleFraction != _titleFraction) {
+      setState(() {
+        _collapseFraction = fillFraction;
+        _titleFraction = titleFraction;
+      });
     }
   }
 
@@ -378,8 +408,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     final formattedType = formatActType(chapter.subtitle);
     final headerHeight = _headerHeight(context);
     final overlayHeight = _overlayHeight ?? _kFallbackOverlayHeight;
-    final iconColor = _showTitleInBar ? AppColors.coldGray : Colors.white;
-    final backIconColor = _showTitleInBar ? AppColors.textPrimary : Colors.white;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -537,17 +565,13 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
               ],
             ),
           ),
-          SafeArea(
-            bottom: false,
-            child: _TopBar(
-              title: chapter.title,
-              showTitle: _showTitleInBar,
-              backIconColor: backIconColor,
-              iconColor: iconColor,
-              onBack: () => Navigator.of(context).pop(),
-              onDownloadAll: _downloadAll,
-              onFilterTap: _openFilterSort,
-            ),
+          _TopBar(
+            title: chapter.title,
+            collapseFraction: _collapseFraction,
+            titleFraction: _titleFraction,
+            onBack: () => Navigator.of(context).pop(),
+            onDownloadAll: _downloadAll,
+            onFilterTap: _openFilterSort,
           ),
           Positioned(
             right: 20,
@@ -568,18 +592,16 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
 class _TopBar extends StatelessWidget {
   final String title;
-  final bool showTitle;
-  final Color backIconColor;
-  final Color iconColor;
+  final double collapseFraction; // 0..1 — drives bar background fill (fast)
+  final double titleFraction;    // 0..1 — drives title appearance (slower)
   final VoidCallback onBack;
   final VoidCallback onDownloadAll;
   final VoidCallback onFilterTap;
 
   const _TopBar({
     required this.title,
-    required this.showTitle,
-    required this.backIconColor,
-    required this.iconColor,
+    required this.collapseFraction,
+    required this.titleFraction,
     required this.onBack,
     required this.onDownloadAll,
     required this.onFilterTap,
@@ -587,56 +609,83 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      height: _kToolbarHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      color: showTitle ? AppColors.background : Colors.transparent,
-      child: Row(
-        children: [
-          IconButton(
-            iconSize: 28,
-            icon: Icon(Icons.arrow_back, color: backIconColor),
-            onPressed: onBack,
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+
+    // Fully transparent at scroll = 0 (header image shows through,
+    // FB/Mihon style). Fills quickly toward AppColors.background.
+    final bgColor = AppColors.background.withValues(alpha: collapseFraction);
+
+    final iconColor = Color.lerp(Colors.white, AppColors.coldGray, collapseFraction)!;
+    final backColor = Color.lerp(Colors.white, AppColors.textPrimary, collapseFraction)!;
+
+    // Title uses its own fraction so it appears much later than the
+    // background fill — after the user has scrolled past the header
+    // image and the action buttons row.
+    final titleVisible = titleFraction >= 0.999;
+
+    return Container(
+      height: statusBarHeight + _kToolbarHeight,
+      padding: EdgeInsets.only(top: statusBarHeight),
+      decoration: BoxDecoration(
+        color: bgColor,
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.border.withValues(alpha: collapseFraction),
+            width: 1,
           ),
-          Expanded(
-            child: AnimatedOpacity(
-              opacity: showTitle ? 1 : 0,
-              duration: const Duration(milliseconds: 150),
-              child: Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-                overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      child: SizedBox(
+        height: _kToolbarHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            children: [
+              IconButton(
+                iconSize: 28,
+                icon: Icon(Icons.arrow_back, color: backColor),
+                onPressed: onBack,
               ),
-            ),
-          ),
-          IconButton(
-            iconSize: 28,
-            icon: Icon(Icons.download_outlined, color: iconColor),
-            tooltip: 'Download all',
-            onPressed: onDownloadAll,
-          ),
-          IconButton(
-            iconSize: 28,
-            icon: Icon(Icons.tune, color: iconColor),
-            tooltip: 'Filter & sort',
-            onPressed: onFilterTap,
-          ),
-          PopupMenuButton<String>(
-            icon: Icon(Icons.menu, size: 28, color: iconColor),
-            color: AppColors.surface,
-            onSelected: (value) {},
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'refresh', child: Text('Refresh', style: TextStyle(color: AppColors.textPrimary))),
-              PopupMenuItem(value: 'wiki', child: Text('Open Wiki', style: TextStyle(color: AppColors.textPrimary))),
-              PopupMenuItem(value: 'share', child: Text('Share', style: TextStyle(color: AppColors.textPrimary))),
+              Expanded(
+                child: AnimatedOpacity(
+                  opacity: titleVisible ? 1 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              IconButton(
+                iconSize: 28,
+                icon: Icon(Icons.download_outlined, color: iconColor),
+                tooltip: 'Download all',
+                onPressed: onDownloadAll,
+              ),
+              IconButton(
+                iconSize: 28,
+                icon: Icon(Icons.tune, color: iconColor),
+                tooltip: 'Filter & sort',
+                onPressed: onFilterTap,
+              ),
+              PopupMenuButton<String>(
+                icon: Icon(Icons.menu, size: 28, color: iconColor),
+                color: AppColors.surface,
+                onSelected: (value) {},
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'refresh', child: Text('Refresh', style: TextStyle(color: AppColors.textPrimary))),
+                  PopupMenuItem(value: 'wiki', child: Text('Open Wiki', style: TextStyle(color: AppColors.textPrimary))),
+                  PopupMenuItem(value: 'share', child: Text('Share', style: TextStyle(color: AppColors.textPrimary))),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

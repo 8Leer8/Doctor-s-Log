@@ -33,7 +33,20 @@ class ChapterHeaderImage extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         _buildImage(),
-        // Bottom vignette so text overlaid on top of it stays legible.
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black54, // strongest at the very top
+                Colors.black26, // softening
+                Colors.transparent,
+              ],
+              stops: [0.0, 0.08, 0.18],
+            ),
+          ),
+        ),
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -44,20 +57,18 @@ class ChapterHeaderImage extends StatelessWidget {
             ),
           ),
         ),
-        // Very light side vignette — subtle depth, kept faint since no
-        // text sits near the edges.
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
               colors: [
-                Colors.black26,
+                Colors.black45,
                 Colors.transparent,
                 Colors.transparent,
-                Colors.black26,
+                Colors.black45,
               ],
-              stops: [0.0, 0.15, 0.85, 1.0],
+              stops: [0.0, 0.12, 0.88, 1.0],
             ),
           ),
         ),

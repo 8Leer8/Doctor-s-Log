@@ -96,34 +96,41 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+
     return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      // Paints status bar + toolbar as ONE continuous block using the
+      // same color as the screen body, matching Facebook's unified top.
+      height: statusBarHeight + 52,
+      padding: EdgeInsets.only(top: statusBarHeight),
       decoration: const BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.background,
         border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
       ),
-      child: Row(
-        children: [
-          const Text(
-            'LIBRARY',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.5,
-              color: AppColors.textPrimary,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            const Text(
+              'LIBRARY',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.5,
+                color: AppColors.textPrimary,
+              ),
             ),
-          ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.search, color: AppColors.coldGray, size: 22),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.tune, color: AppColors.coldGray, size: 20),
-            onPressed: () {},
-          ),
-        ],
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.search, color: AppColors.coldGray, size: 22),
+              onPressed: () {},
+            ),
+            IconButton(
+              icon: const Icon(Icons.tune, color: AppColors.coldGray, size: 20),
+              onPressed: () {},
+            ),
+          ],
+        ),
       ),
     );
   }
