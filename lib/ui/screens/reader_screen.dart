@@ -19,18 +19,14 @@ import '../widgets/reader/reader_top_bar.dart';
 import '../widgets/reader/reader_bottom_bar.dart';
 import '../widgets/reader/reader_settings_sheet.dart';
 import '../widgets/reader/reader_toc_sheet.dart';
+import '../widgets/common/app_toast.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String chapterId;
   final String chapterTitle;
   final List<ReaderPart> readerParts;
   final int startAt;
-
-  /// Previously-answered choices, keyed "partOriginalIndex-choiceId".
   final Map<String, String> initialChoices;
-
-  /// Exact resume point, if any — scrolls straight to this line instead
-  /// of just the top of [startAt]'s part.
   final int? resumePartOriginalIndex;
   final int? resumeElementIndex;
 
@@ -56,12 +52,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   List<ReaderItem>? _rawItems;
 
-  // Keyed "partIndexInList-choiceId" for in-session use.
   final Map<String, String> _selections = {};
+  final Map<int, String> _missingParts = {};
 
   int _frontierPartIndexInList = 0;
   int _currentPartIndexInList = 0;
-  int _currentElementIndexInPart = 0; // for resume-position persistence
+  int _currentElementIndexInPart = 0;
 
   int? _confirmedReadOriginalIndex;
 
@@ -97,21 +93,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   void _seedInitialSelections() {
     widget.initialChoices.forEach((key, value) {
-      // key is "partOriginalIndex-choiceId" -> convert to "partIndexInList-choiceId"
       final parts = key.split('-');
       if (parts.length != 2) return;
       final originalIndex = int.tryParse(parts[0]);
       final choiceId = parts[1];
       if (originalIndex == null) return;
-      final listIndex = widget.readerParts.indexWhere((rp) => rp.originalIndex == originalIndex);
+      final listIndex = widget.readerParts.indexWhere(
+        (rp) => rp.originalIndex == originalIndex,
+      );
       if (listIndex == -1) return;
       _selections['$listIndex-$choiceId'] = value;
     });
   }
 
   Future<void> _persistProgress() async {
-    // Persist answered choices, keyed back by originalIndex for stability
-    // across sessions even if the part-list composition changes.
     final choicesToSave = <String, String>{};
     _selections.forEach((key, value) {
       final dashIndex = key.indexOf('-');
@@ -125,7 +120,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     await ReadingProgressStore.setChoices(widget.chapterId, choicesToSave);
 
     if (_currentPartIndexInList < widget.readerParts.length) {
-      final originalIndex = widget.readerParts[_currentPartIndexInList].originalIndex;
+      final originalIndex =
+          widget.readerParts[_currentPartIndexInList].originalIndex;
       await ReadingProgressStore.setResumePosition(
         widget.chapterId,
         originalIndex,
@@ -155,8 +151,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     if (bestPart != null) {
       if (bestPart! > 0) {
-        final justBeforeOriginal = widget.readerParts[bestPart! - 1].originalIndex;
-        if (_confirmedReadOriginalIndex == null || justBeforeOriginal > _confirmedReadOriginalIndex!) {
+        final justBeforeOriginal =
+            widget.readerParts[bestPart! - 1].originalIndex;
+        if (_confirmedReadOriginalIndex == null ||
+            justBeforeOriginal > _confirmedReadOriginalIndex!) {
           _confirmedReadOriginalIndex = justBeforeOriginal;
         }
       }
@@ -165,8 +163,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
       }
     }
 
-    // Track the exact line for fine-grained resume, independent of the
-    // part-boundary tracking above.
     final items = _rawItems;
     if (items != null) {
       final visible = _lastVisibleItems;
@@ -181,7 +177,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (_endMarkerListIndex != null &&
         positions.any((p) => p.index == _endMarkerListIndex)) {
       final lastOriginal = widget.readerParts.last.originalIndex;
-      if (_confirmedReadOriginalIndex == null || lastOriginal > _confirmedReadOriginalIndex!) {
+      if (_confirmedReadOriginalIndex == null ||
+          lastOriginal > _confirmedReadOriginalIndex!) {
         _confirmedReadOriginalIndex = lastOriginal;
       }
     }
@@ -219,7 +216,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   bool get _canGoPrev => _currentPartIndexInList > 0;
-  bool get _canGoNext => _currentPartIndexInList < widget.readerParts.length - 1;
+  bool get _canGoNext =>
+      _currentPartIndexInList < widget.readerParts.length - 1;
 
   void _goPrev() {
     if (!_canGoPrev) return;
@@ -233,35 +231,86 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   String get _currentPartTitle {
     if (widget.readerParts.isEmpty) return widget.chapterTitle;
-    final index = _currentPartIndexInList.clamp(0, widget.readerParts.length - 1);
+    final index = _currentPartIndexInList.clamp(
+      0,
+      widget.readerParts.length - 1,
+    );
     return widget.readerParts[index].part.title;
   }
 
   String? get _currentPartSubtitle {
     if (widget.readerParts.isEmpty) return null;
-    final index = _currentPartIndexInList.clamp(0, widget.readerParts.length - 1);
+    final index = _currentPartIndexInList.clamp(
+      0,
+      widget.readerParts.length - 1,
+    );
     return widget.readerParts[index].part.avgTag;
+  }
+
+  String _classifyError(Object e) {
+    final s = e.toString().toLowerCase();
+    final isNet =
+        s.contains('socketexception') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection') ||
+        s.contains('no address associated') ||
+        s.contains('connection error');
+    return isNet ? 'no_internet' : 'unknown';
+  }
+
+  Future<String?> _loadPartRaw(
+    int partIndexInList,
+    List<String> reasonOut,
+  ) async {
+    final filename = widget.readerParts[partIndexInList].part.filename!;
+
+    try {
+      final cached = await DownloadStore.getContent(filename);
+      if (cached != null && cached.isNotEmpty) return cached;
+    } catch (_) {}
+
+    try {
+      return await _dataSource.fetchRawStory(filename);
+    } catch (e) {
+      reasonOut.add(_classifyError(e));
+      return null;
+    }
   }
 
   Future<void> _fetchAll() async {
     try {
       final items = <ReaderItem>[];
+      bool cascadeStopped = false;
+      _missingParts.clear();
+
       for (int i = 0; i < widget.readerParts.length; i++) {
         final readerPart = widget.readerParts[i];
 
-        items.add(TransitionItem(
-          previousTitle: i == 0 ? null : widget.readerParts[i - 1].part.title,
-          currentTitle: readerPart.part.title,
-          partIndexInList: i,
-        ));
+        items.add(
+          TransitionItem(
+            previousTitle: i == 0 ? null : widget.readerParts[i - 1].part.title,
+            currentTitle: readerPart.part.title,
+            partIndexInList: i,
+          ),
+        );
 
-        final cached = await DownloadStore.getContent(readerPart.part.filename!);
-        final raw = cached ?? await _dataSource.fetchRawStory(readerPart.part.filename!);
+        if (cascadeStopped) continue;
+
+        final reasonOut = <String>[];
+        final raw = await _loadPartRaw(i, reasonOut);
+
+        if (raw == null) {
+          _missingParts[i] = reasonOut.isEmpty ? 'unknown' : reasonOut.first;
+          cascadeStopped = true;
+          continue;
+        }
+
         final elements = StoryParser.parse(raw);
         for (int e = 0; e < elements.length; e++) {
           items.add(ContentItem(elements[e], i, e));
         }
       }
+
       setState(() {
         _rawItems = items;
         _loading = false;
@@ -274,13 +323,81 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  /// Retries loading from [partIndexInList] onward, inserting content
+  /// after each part's TransitionItem. Cascades forward through ALL
+  /// subsequent parts (not just ones marked missing) so that parts
+  /// that were never attempted during the initial fetch get loaded
+  /// too. Stops only if a part genuinely fails to load.
+  Future<void> _retryPart(int partIndexInList) async {
+    for (int i = partIndexInList; i < widget.readerParts.length; i++) {
+      // Skip parts whose content is already loaded.
+      if (!_missingParts.containsKey(i) && _hasContentFor(i)) {
+        continue;
+      }
+
+      final reasonOut = <String>[];
+      final raw = await _loadPartRaw(i, reasonOut);
+
+      if (raw == null) {
+        // This part genuinely failed — update its reason and stop.
+        if (!mounted) return;
+        setState(() {
+          _missingParts[i] = reasonOut.isEmpty ? 'unknown' : reasonOut.first;
+        });
+        AppToast.show(
+          context,
+          reasonOut.isNotEmpty && reasonOut.first == 'no_internet'
+              ? 'Still offline · No internet'
+              : 'Could not load this part',
+          icon: Icons.wifi_off_rounded,
+          accent: Colors.redAccent,
+        );
+        return;
+      }
+
+      // Success — parse and insert after this part's TransitionItem.
+      final elements = StoryParser.parse(raw);
+      final newContent = <ReaderItem>[];
+      for (int e = 0; e < elements.length; e++) {
+        newContent.add(ContentItem(elements[e], i, e));
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _missingParts.remove(i);
+        final items = _rawItems;
+        if (items == null) return;
+        final idx = items.indexWhere(
+          (it) => it is TransitionItem && it.partIndexInList == i,
+        );
+        if (idx != -1) {
+          // Only insert if not already present.
+          if (!_hasContentFor(i)) {
+            items.insertAll(idx + 1, newContent);
+          }
+        }
+      });
+    }
+  }
+
+  /// Returns true if _rawItems already has ContentItems belonging to
+  /// the given part.
+  bool _hasContentFor(int partIndexInList) {
+    final items = _rawItems;
+    if (items == null) return false;
+    return items.any(
+      (it) => it is ContentItem && it.partIndexInList == partIndexInList,
+    );
+  }
+
   void _toggleControls() {
     setState(() => _showControls = !_showControls);
   }
 
   void _openSettings() {
     ReaderSettingsSheet.show(context, _settings, (updated) {
-      final wakelockChanged = updated.keepScreenAwake != _settings.keepScreenAwake;
+      final wakelockChanged =
+          updated.keepScreenAwake != _settings.keepScreenAwake;
       setState(() => _settings = updated);
       if (wakelockChanged) {
         if (updated.keepScreenAwake) {
@@ -293,7 +410,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   void _openToc() {
-    ReaderTocSheet.show(context, widget.readerParts, _currentPartIndexInList, (index) {
+    ReaderTocSheet.show(context, widget.readerParts, _currentPartIndexInList, (
+      index,
+    ) {
       _jumpToPart(index);
     });
   }
@@ -309,10 +428,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     for (final item in all) {
       if (cascadeStopped) {
-        if (item is TransitionItem) {
-          partIndexMap[item.partIndexInList] = visible.length;
-          visible.add(item);
-        }
         break;
       }
 
@@ -320,6 +435,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
         partIndexMap[item.partIndexInList] = visible.length;
         visible.add(item);
         lockedItemIndex = null;
+
+        if (_missingParts.containsKey(item.partIndexInList)) {
+          cascadeStopped = true;
+        }
         continue;
       }
 
@@ -341,7 +460,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
         final chosen = _selections[key];
 
         if (chosen != null) {
-          final matches = el.requiredValue!.split(';').map((s) => s.trim()).contains(chosen);
+          final matches = el.requiredValue!
+              .split(';')
+              .map((s) => s.trim())
+              .contains(chosen);
           if (matches) {
             lockedItemIndex = null;
             visible.add(item);
@@ -358,7 +480,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
         final gateChoiceId = el.gateChoiceId;
         final lastVisible = visible.isNotEmpty ? visible.last : null;
-        final immediatelyAfterOwnChoice = lastVisible is ContentItem &&
+        final immediatelyAfterOwnChoice =
+            lastVisible is ContentItem &&
             lastVisible.element is StoryChoiceElement &&
             (lastVisible.element as StoryChoiceElement).id == gateChoiceId;
 
@@ -397,7 +520,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final resumePart = widget.resumePartOriginalIndex;
     final resumeElement = widget.resumeElementIndex;
     if (resumePart != null && resumeElement != null) {
-      final listIndex = widget.readerParts.indexWhere((rp) => rp.originalIndex == resumePart);
+      final listIndex = widget.readerParts.indexWhere(
+        (rp) => rp.originalIndex == resumePart,
+      );
       if (listIndex != -1) {
         for (int i = 0; i < visibleItems.length; i++) {
           final item = visibleItems[i];
@@ -460,13 +585,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.amber));
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.amber),
+      );
     }
     if (_error != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('Failed to load:\n$_error', style: const TextStyle(color: Colors.redAccent)),
+          child: Text(
+            'Failed to load:\n$_error',
+            style: const TextStyle(color: Colors.redAccent),
+          ),
         ),
       );
     }
@@ -486,17 +616,23 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
         Widget child;
         if (item is TransitionItem) {
+          final reason = _missingParts[item.partIndexInList];
           child = ChapterTransitionWidget(
             previousTitle: item.previousTitle,
             currentTitle: item.currentTitle,
             settings: _settings,
+            missingReason: reason,
+            onRetry: reason != null
+                ? () => _retryPart(item.partIndexInList)
+                : null,
           );
         } else if (item is EndOfChapterMarker) {
           child = EndOfChapterWidget(settings: _settings);
         } else if (item is LockedSectionItem) {
           child = LockedSectionWidget(
             settings: _settings,
-            onGoToChoice: () => _goToChoice(item.partIndexInList, item.gateChoiceId),
+            onGoToChoice: () =>
+                _goToChoice(item.partIndexInList, item.gateChoiceId),
           );
         } else if (item is ContentItem) {
           final el = item.element;

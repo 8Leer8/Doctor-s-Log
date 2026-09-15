@@ -1,10 +1,14 @@
 import '../../../models/story_element.dart';
 
-abstract class ReaderItem {}
+abstract class ReaderItem {
+  const ReaderItem();
+}
+
 class ContentItem extends ReaderItem {
   final StoryElement element;
   final int partIndexInList;
-  final int elementIndexInPart; // position within this part's own raw parsed list — stable across sessions
+  final int
+  elementIndexInPart; // position within this part's own raw parsed list — stable across sessions
   ContentItem(this.element, this.partIndexInList, this.elementIndexInPart);
 }
 
@@ -20,8 +24,12 @@ class TransitionItem extends ReaderItem {
 }
 
 class EndOfChapterMarker extends ReaderItem {}
+
 class LockedSectionItem extends ReaderItem {
   final int partIndexInList;
   final int gateChoiceId;
-  LockedSectionItem({required this.partIndexInList, required this.gateChoiceId});
+  LockedSectionItem({
+    required this.partIndexInList,
+    required this.gateChoiceId,
+  });
 }
