@@ -3,11 +3,11 @@ import '../../../models/story_element.dart';
 import '../../../models/reader_settings.dart';
 import 'reader_item.dart';
 import '../chapter_transition_widget.dart';
+import 'dialogue_group_widget.dart';
 import 'end_of_chapter_widget.dart';
 import 'locked_section_widget.dart';
 import 'story_line_widget.dart';
 import 'choice_widget.dart';
-import '../chapter_transition_widget.dart' show ChapterTransitionWidget;
 
 /// Renders a single ReaderItem into its widget. Stateless — all state
 /// lives in the parent ReaderScreen.
@@ -49,6 +49,14 @@ class ReaderItemBuilder {
         onRetryForward: item.forwardMissingReason != null
             ? () => onRetryForward(item.partIndexInList)
             : null,
+      );
+    }
+
+    if (item is DialogueGroupItem) {
+      return DialogueGroupWidget(
+        speaker: item.speaker,
+        lines: item.lines,
+        settings: settings,
       );
     }
 

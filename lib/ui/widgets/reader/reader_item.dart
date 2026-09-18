@@ -7,44 +7,44 @@ abstract class ReaderItem {
 class ContentItem extends ReaderItem {
   final StoryElement element;
   final int partIndexInList;
-  final int
-  elementIndexInPart; // position within this part's own raw parsed list — stable across sessions
+  final int elementIndexInPart;
   ContentItem(this.element, this.partIndexInList, this.elementIndexInPart);
 }
 
-/// A divider in the reading flow between two parts.
+/// A run of consecutive [StoryLineElement]s that share the same
+/// [speaker] value (including `null` for narration) collapsed into a
+/// single visual block.
 ///
-/// [partIndexInList] identifies the part being "entered" by this
-/// transition — its title is shown as [currentTitle]. A single transition
-/// can independently report a loading/error state for:
-///   * the part immediately *before* it (backward — shown in the
-///     PREVIOUS/top section), and/or
-///   * the part this transition represents going forward, i.e. either the
-///     part being entered (when it's still loading/missing) or the part
-///     right after the currently loaded window (forward — shown in the
-///     CURRENT/bottom section).
+/// Produced by [buildReaderVisibleItems] as a presentation-only pass
+/// after choice-gating. The underlying per-line [StoryElement]s are
+/// preserved in [lines] so nothing about the parser's data model
+/// changes.
 ///
-/// Both slots may be set at once, only one may be set, or neither — the
-/// widget renders whichever slots are non-null. This lets one divider show
-/// two fully independent error states at the same time.
+/// [firstElementIndexInPart] is the [elementIndexInPart] of `lines[0]`
+/// within its original part — used by the reader for resume-position
+/// persistence, since the group replaces what used to be a run of
+/// separate [ContentItem]s that each carried their own index.
+class DialogueGroupItem extends ReaderItem {
+  final String? speaker;
+  final List<StoryLineElement> lines;
+  final int partIndexInList;
+  final int firstElementIndexInPart;
+
+  const DialogueGroupItem({
+    required this.speaker,
+    required this.lines,
+    required this.partIndexInList,
+    required this.firstElementIndexInPart,
+  });
+}
+
 class TransitionItem extends ReaderItem {
   final String? previousTitle;
   final String currentTitle;
   final int partIndexInList;
-
-  /// Missing reason ('no_internet' | 'unknown') for the part immediately
-  /// before this transition, or null if that part is loaded, not
-  /// applicable, or hasn't been attempted/hasn't failed.
   final String? backwardMissingReason;
-
-  /// Missing reason for the part this transition represents going
-  /// forward (see class doc).
   final String? forwardMissingReason;
-
-  /// True while the backward-adjacent part is being fetched.
   final bool isLoadingBackward;
-
-  /// True while the forward-adjacent part is being fetched.
   final bool isLoadingForward;
 
   TransitionItem({

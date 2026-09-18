@@ -183,6 +183,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final atTop = visible[visibleListIndex];
       if (atTop is ContentItem) {
         _currentElementIndexInPart = atTop.elementIndexInPart;
+      } else if (atTop is DialogueGroupItem) {
+        _currentElementIndexInPart = atTop.firstElementIndexInPart;
       }
     }
 
@@ -264,6 +266,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
         item.elementIndexInPart,
         alignment,
       );
+    } else if (item is DialogueGroupItem) {
+      return ScrollAnchor.content(
+        item.partIndexInList,
+        item.firstElementIndexInPart,
+        alignment,
+      );
     } else if (item is TransitionItem) {
       return ScrollAnchor.transition(item.partIndexInList, alignment);
     } else if (item is LockedSectionItem) {
@@ -286,6 +294,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
           if (item is ContentItem &&
               item.partIndexInList == anchor.partIndexInList &&
               item.elementIndexInPart == anchor.elementIndexInPart) {
+            return i;
+          }
+          if (item is DialogueGroupItem &&
+              item.partIndexInList == anchor.partIndexInList &&
+              item.firstElementIndexInPart == anchor.elementIndexInPart) {
             return i;
           }
           break;
@@ -336,6 +349,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         final next = items[dividerIndex + 1];
         final belongsToTargetPart =
             (next is ContentItem && next.partIndexInList == partIndexInList) ||
+            (next is DialogueGroupItem &&
+                next.partIndexInList == partIndexInList) ||
             (next is LockedSectionItem &&
                 next.partIndexInList == partIndexInList);
         if (belongsToTargetPart) targetIndex = dividerIndex + 1;
@@ -580,6 +595,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
           if (item is ContentItem &&
               item.partIndexInList == listIndex &&
               item.elementIndexInPart >= resumeElement) {
+            return i;
+          }
+          if (item is DialogueGroupItem &&
+              item.partIndexInList == listIndex &&
+              item.firstElementIndexInPart >= resumeElement) {
             return i;
           }
         }
