@@ -41,8 +41,8 @@ class ReaderItemBuilder {
         settings: settings,
         backwardMissingReason: item.backwardMissingReason,
         forwardMissingReason: item.forwardMissingReason,
-        isLoadingBackward: item.isLoadingBackward,
-        isLoadingForward: item.isLoadingForward,
+        isPendingBackward: item.isPendingBackward,
+        isPendingForward: item.isPendingForward,
         onRetryBackward: item.backwardMissingReason != null
             ? () => onRetryBackward(item.partIndexInList - 1)
             : null,

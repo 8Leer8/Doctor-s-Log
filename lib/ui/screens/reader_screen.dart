@@ -61,6 +61,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   String? _fatalError;
 
+  /// Part currently being fetched on scroll-approach. Drives the orange
+  /// "pending" divider. Held for [_kSettleDelay] after the fetch resolves
+  /// so the transition reads as a smooth beat rather than a snap.
+  int? _pendingPartIndex;
+
+  static const Duration _kSettleDelay = Duration(milliseconds: 300);
+
   final Map<String, String> _selections = {};
 
   int _frontierPartIndexInList = 0;
@@ -439,8 +446,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
       return;
     }
 
+    // Enter the pending (orange) state immediately.
     setState(() {
       _loadingParts.add(partIndexInList);
+      _pendingPartIndex = partIndexInList;
       _missingParts.remove(partIndexInList);
     });
 
@@ -449,10 +458,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     if (!mounted) return;
 
+    // Hold the pending visual for the settle duration so the transition
+    // reads as a smooth beat rather than an instant snap.
+    await Future.delayed(_kSettleDelay);
+
+    if (!mounted) return;
+
     if (raw == null) {
       final reason = reasonOut.isEmpty ? 'unknown' : reasonOut.first;
       setState(() {
         _loadingParts.remove(partIndexInList);
+        _pendingPartIndex = null;
         _missingParts[partIndexInList] = reason;
       });
       if (isManualRetry) {
@@ -474,6 +490,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     } catch (e) {
       setState(() {
         _loadingParts.remove(partIndexInList);
+        _pendingPartIndex = null;
         _fatalError = e.toString();
       });
       return;
@@ -491,6 +508,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     setState(() {
       _loadingParts.remove(partIndexInList);
+      _pendingPartIndex = null;
       _contentCache[partIndexInList] = elements;
       _loadedParts.add(partIndexInList);
       _lo = (_lo == null || partIndexInList < _lo!) ? partIndexInList : _lo;
@@ -559,6 +577,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Wrapper around the extracted builder that also updates the reader's
   /// internal index maps after each build.
   List<ReaderItem> _buildVisibleItems() {
+    // Determine which side the pending part sits on so we can hand the
+    // correct flag to the builder.
+    int? pendingBackward;
+    int? pendingForward;
+    if (_pendingPartIndex != null) {
+      if (_lo != null && _pendingPartIndex! < _lo!) {
+        pendingBackward = _pendingPartIndex;
+      } else if (_hi != null && _pendingPartIndex! > _hi!) {
+        pendingForward = _pendingPartIndex;
+      } else if (_lo == null) {
+        // Nothing loaded yet — treat as forward.
+        pendingForward = _pendingPartIndex;
+      }
+    }
+
     final result = buildReaderVisibleItems(
       readerParts: widget.readerParts,
       startAt: widget.startAt,
@@ -570,6 +603,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       contentCache: _contentCache,
       selections: _selections,
       frontierPartIndexInList: _frontierPartIndexInList,
+      pendingBackwardPartIndex: pendingBackward,
+      pendingForwardPartIndex: pendingForward,
     );
 
     _partListIndex = result.partListIndex;

@@ -2,32 +2,17 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/reader_settings.dart';
 
+enum TransitionDirection { forward, backward }
+
 class ChapterTransitionWidget extends StatefulWidget {
   final String? previousTitle;
   final String currentTitle;
   final ReaderSettings settings;
-
-  /// When non-null, the part *before* this transition failed to load.
-  /// Values: 'no_internet' | 'unknown'. Rendered in the PREVIOUS/top
-  /// section.
   final String? backwardMissingReason;
-
-  /// When non-null, the part this transition represents going forward
-  /// failed to load. Rendered in the CURRENT/bottom section.
   final String? forwardMissingReason;
-
-  /// True while the backward-adjacent part is being fetched.
-  final bool isLoadingBackward;
-
-  /// True while the forward-adjacent part is being fetched.
-  final bool isLoadingForward;
-
-  /// Retry callback for the backward slot. Only shown when
-  /// [backwardMissingReason] is set.
+  final bool isPendingBackward;
+  final bool isPendingForward;
   final VoidCallback? onRetryBackward;
-
-  /// Retry callback for the forward slot. Only shown when
-  /// [forwardMissingReason] is set.
   final VoidCallback? onRetryForward;
 
   const ChapterTransitionWidget({
@@ -37,8 +22,8 @@ class ChapterTransitionWidget extends StatefulWidget {
     required this.settings,
     this.backwardMissingReason,
     this.forwardMissingReason,
-    this.isLoadingBackward = false,
-    this.isLoadingForward = false,
+    this.isPendingBackward = false,
+    this.isPendingForward = false,
     this.onRetryBackward,
     this.onRetryForward,
   });
@@ -49,60 +34,106 @@ class ChapterTransitionWidget extends StatefulWidget {
 }
 
 class _ChapterTransitionWidgetState extends State<ChapterTransitionWidget> {
-  bool _backwardPressed = false;
-  bool _forwardPressed = false;
-
-  bool get _hasBackwardIssue =>
-      widget.backwardMissingReason != null || widget.isLoadingBackward;
-
-  bool get _hasForwardIssue =>
-      widget.forwardMissingReason != null || widget.isLoadingForward;
+  bool _pressingBackward = false;
+  bool _pressingForward = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = widget.settings.colors;
-    final hasAnyIssue = _hasBackwardIssue || _hasForwardIssue;
+    final backwardMissing = widget.backwardMissingReason != null;
+    final forwardMissing = widget.forwardMissingReason != null;
+    final backwardPending = widget.isPendingBackward;
+    final forwardPending = widget.isPendingForward;
+
+    // A side is "orange" if pending and NOT missing. If it's missing,
+    // it's red (error state wins over pending — shouldn't co-occur, but
+    // this makes the priority explicit).
+    final backwardAccent = backwardMissing
+        ? Colors.redAccent
+        : (backwardPending ? AppColors.amber : colors.secondaryText);
+    final forwardAccent = forwardMissing
+        ? Colors.redAccent
+        : (forwardPending ? AppColors.amber : colors.accent);
+
+    final anyError = backwardMissing || forwardMissing;
+    final anyPending = (backwardPending || forwardPending) && !anyError;
+
+    final borderColor = anyError
+        ? Colors.redAccent.withValues(alpha: 0.4)
+        : (anyPending
+              ? AppColors.amber.withValues(alpha: 0.5)
+              : colors.secondaryText.withValues(alpha: 0.3));
 
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 28),
       child: ClipPath(
         clipper: CutCornerClipper(cut: 14),
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
           decoration: BoxDecoration(
             color: colors.background,
-            border: Border.all(
-              color: hasAnyIssue
-                  ? Colors.redAccent.withValues(alpha: 0.4)
-                  : colors.secondaryText.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: borderColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.previousTitle != null) ...[
-                _buildSectionLabelRow(
-                  label: 'PREVIOUS',
-                  hasIssue: _hasBackwardIssue,
-                  defaultIcon: Icons.check_circle,
-                  defaultLabelColor: colors.secondaryText,
-                  defaultIconColor: colors.secondaryText,
-                  title: widget.previousTitle!,
-                  titleColor: colors.secondaryText,
-                  titleWeight: FontWeight.w600,
-                  titleSize: 15,
+                Text(
+                  'PREVIOUS',
+                  style: TextStyle(
+                    color: backwardAccent,
+                    fontSize: 10,
+                    letterSpacing: 1.5,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                if (_hasBackwardIssue) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    if (backwardPending && !backwardMissing)
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation(AppColors.amber),
+                        ),
+                      )
+                    else
+                      Icon(
+                        backwardMissing
+                            ? Icons.cloud_off_rounded
+                            : Icons.check_circle,
+                        color: backwardAccent,
+                        size: 18,
+                      ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        widget.previousTitle!,
+                        style: TextStyle(
+                          color: backwardMissing
+                              ? Colors.redAccent
+                              : colors.secondaryText,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (backwardMissing) ...[
                   const SizedBox(height: 10),
                   _buildErrorBlock(
-                    isLoading: widget.isLoadingBackward,
-                    missingReason: widget.backwardMissingReason,
+                    colors,
+                    reason: widget.backwardMissingReason!,
                     onRetry: widget.onRetryBackward,
-                    pressed: _backwardPressed,
-                    onPressedChanged: (v) =>
-                        setState(() => _backwardPressed = v),
+                    pressing: _pressingBackward,
+                    onPressChange: (v) => setState(() => _pressingBackward = v),
                   ),
                 ],
                 const SizedBox(height: 20),
@@ -112,26 +143,56 @@ class _ChapterTransitionWidgetState extends State<ChapterTransitionWidget> {
                 ),
                 const SizedBox(height: 20),
               ],
-              _buildSectionLabelRow(
-                label: 'CURRENT',
-                hasIssue: _hasForwardIssue,
-                defaultIcon: Icons.play_circle,
-                defaultLabelColor: colors.accent,
-                defaultIconColor: colors.accent,
-                title: widget.currentTitle,
-                titleColor: colors.text,
-                titleWeight: FontWeight.w700,
-                titleSize: 17,
-                expandTitle: true,
+              Text(
+                'CURRENT',
+                style: TextStyle(
+                  color: forwardAccent,
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              if (_hasForwardIssue) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  if (forwardPending && !forwardMissing)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(AppColors.amber),
+                      ),
+                    )
+                  else
+                    Icon(
+                      forwardMissing
+                          ? Icons.cloud_off_rounded
+                          : Icons.play_circle,
+                      color: forwardAccent,
+                      size: 18,
+                    ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.currentTitle,
+                      style: TextStyle(
+                        color: forwardMissing ? Colors.redAccent : colors.text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (forwardMissing) ...[
                 const SizedBox(height: 10),
                 _buildErrorBlock(
-                  isLoading: widget.isLoadingForward,
-                  missingReason: widget.forwardMissingReason,
+                  colors,
+                  reason: widget.forwardMissingReason!,
                   onRetry: widget.onRetryForward,
-                  pressed: _forwardPressed,
-                  onPressedChanged: (v) => setState(() => _forwardPressed = v),
+                  pressing: _pressingForward,
+                  onPressChange: (v) => setState(() => _pressingForward = v),
                 ),
               ],
             ],
@@ -141,97 +202,19 @@ class _ChapterTransitionWidgetState extends State<ChapterTransitionWidget> {
     );
   }
 
-  Widget _buildSectionLabelRow({
-    required String label,
-    required bool hasIssue,
-    required IconData defaultIcon,
-    required Color defaultLabelColor,
-    required Color defaultIconColor,
-    required String title,
-    required Color titleColor,
-    required FontWeight titleWeight,
-    required double titleSize,
-    bool expandTitle = false,
-  }) {
-    final labelColor = hasIssue ? Colors.redAccent : defaultLabelColor;
-    final iconColor = hasIssue ? Colors.redAccent : defaultIconColor;
-    final icon = hasIssue ? Icons.cloud_off_rounded : defaultIcon;
-
-    final titleWidget = Text(
-      title,
-      style: TextStyle(
-        color: titleColor,
-        fontSize: titleSize,
-        fontWeight: titleWeight,
-      ),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: labelColor,
-            fontSize: 10,
-            letterSpacing: 1.5,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Icon(icon, color: iconColor, size: 18),
-            const SizedBox(width: 8),
-            expandTitle ? Expanded(child: titleWidget) : titleWidget,
-          ],
-        ),
-      ],
-    );
-  }
-
-  /// Same visual layout as before: red title, italic subtitle, RETRY
-  /// button with a press-scale animation. Used independently for the
-  /// backward and forward slots.
-  Widget _buildErrorBlock({
-    required bool isLoading,
-    required String? missingReason,
+  Widget _buildErrorBlock(
+    dynamic colors, {
+    required String reason,
     required VoidCallback? onRetry,
-    required bool pressed,
-    required ValueChanged<bool> onPressedChanged,
+    required bool pressing,
+    required ValueChanged<bool> onPressChange,
   }) {
-    final colors = widget.settings.colors;
-
-    if (isLoading) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: colors.accent,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            'Loading…',
-            style: TextStyle(
-              color: colors.secondaryText,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          missingReason == 'no_internet'
+          reason == 'no_internet'
               ? 'Not downloaded · No internet'
               : 'Not downloaded',
           style: const TextStyle(
@@ -254,13 +237,13 @@ class _ChapterTransitionWidgetState extends State<ChapterTransitionWidget> {
         if (onRetry != null) ...[
           const SizedBox(height: 16),
           GestureDetector(
-            onTapDown: (_) => onPressedChanged(true),
-            onTapCancel: () => onPressedChanged(false),
-            onTapUp: (_) => onPressedChanged(false),
+            onTapDown: (_) => onPressChange(true),
+            onTapUp: (_) => onPressChange(false),
+            onTapCancel: () => onPressChange(false),
             onTap: onRetry,
             child: AnimatedScale(
-              scale: pressed ? 0.94 : 1.0,
-              duration: const Duration(milliseconds: 100),
+              scale: pressing ? 0.94 : 1.0,
+              duration: const Duration(milliseconds: 90),
               curve: Curves.easeOut,
               child: Container(
                 padding: const EdgeInsets.symmetric(
