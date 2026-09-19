@@ -62,10 +62,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
   String? _fatalError;
 
   /// Part currently being fetched on scroll-approach. Drives the orange
-  /// "pending" divider. Held for [_kSettleDelay] after the fetch resolves
-  /// so the transition reads as a smooth beat rather than a snap.
+  /// "pending" divider. Held for at least [_kMinPendingDuration] and
+  /// then [_kSettleDelay] so the transition reads as a smooth beat
+  /// rather than a snap.
   int? _pendingPartIndex;
 
+  /// Minimum time the pending (orange) divider stays visible no matter
+  /// how fast the fetch resolves. Prevents a one-frame flash when the
+  /// part is already cached or the network is fast.
+  static const Duration _kMinPendingDuration = Duration(milliseconds: 600);
+
+  /// Extra settle time after the fetch resolves, before flipping to the
+  /// final (normal or error) state. Gives the visual transition a beat.
   static const Duration _kSettleDelay = Duration(milliseconds: 300);
 
   final Map<String, String> _selections = {};
@@ -453,15 +461,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _missingParts.remove(partIndexInList);
     });
 
+    final startedAt = DateTime.now();
+
     final reasonOut = <String>[];
     final raw = await _loadPartRaw(partIndexInList, reasonOut);
 
     if (!mounted) return;
 
-    // Hold the pending visual for the settle duration so the transition
-    // reads as a smooth beat rather than an instant snap.
-    await Future.delayed(_kSettleDelay);
+    // Enforce a minimum visible duration for the pending state, so a
+    // cache hit or fast network doesn't flash orange for a single frame.
+    final elapsed = DateTime.now().difference(startedAt);
+    final remaining = _kMinPendingDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future.delayed(remaining);
+    }
+    if (!mounted) return;
 
+    // Then settle briefly before resolving, so the color/label change
+    // reads as a transition instead of a snap.
+    await Future.delayed(_kSettleDelay);
     if (!mounted) return;
 
     if (raw == null) {
