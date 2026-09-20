@@ -6,6 +6,7 @@ import '../chapter_transition_widget.dart';
 import 'dialogue_group_widget.dart';
 import 'end_of_chapter_widget.dart';
 import 'locked_section_widget.dart';
+import 'scene_break_widget.dart';
 import 'story_line_widget.dart';
 import 'choice_widget.dart';
 
@@ -50,6 +51,10 @@ class ReaderItemBuilder {
             ? () => onRetryForward(item.partIndexInList)
             : null,
       );
+    }
+
+    if (item is SceneBreakItem) {
+      return SceneBreakWidget(settings: settings);
     }
 
     if (item is DialogueGroupItem) {

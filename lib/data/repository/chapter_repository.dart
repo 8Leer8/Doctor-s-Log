@@ -8,15 +8,18 @@ class ChapterRepository {
 
   Future<List<ChapterPreview>> fetchMainTheme() async {
     final index = await _indexSource.fetchIndex();
-    final entries = index.values.where((e) => e.entryType == 'MAINLINE').toList()
-      ..sort((a, b) => _mainlineSortKey(a.id).compareTo(_mainlineSortKey(b.id)));
+    final entries =
+        index.values.where((e) => e.entryType == 'MAINLINE').toList()..sort(
+          (a, b) => _mainlineSortKey(a.id).compareTo(_mainlineSortKey(b.id)),
+        );
     return entries.map(_toChapterPreview).toList();
   }
 
   Future<List<ChapterPreview>> fetchSideStories() async {
     final index = await _indexSource.fetchIndex();
-    final entries = index.values.where((e) => e.entryType == 'ACTIVITY').toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final entries =
+        index.values.where((e) => e.entryType == 'ACTIVITY').toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
     return entries.map(_toChapterPreview).toList();
   }
 
@@ -28,11 +31,15 @@ class ChapterRepository {
 
   ChapterPreview _toChapterPreview(ChapterIndexEntry entry) {
     final parts = entry.infoUnlockDatas
-        .map((u) => StoryPart(
-              title: u.storyName.isNotEmpty ? u.storyName : (u.storyCode.isNotEmpty ? u.storyCode : u.storyId),
-              filename: '${u.storyTxt}.txt',
-              avgTag: u.avgTag.isNotEmpty ? u.avgTag : null,
-            ))
+        .map(
+          (u) => StoryPart(
+            title: u.storyName.isNotEmpty
+                ? u.storyName
+                : (u.storyCode.isNotEmpty ? u.storyCode : u.storyId),
+            filename: '${u.storyTxt}.txt',
+            avgTag: u.avgTag.isNotEmpty ? u.avgTag : null,
+          ),
+        )
         .toList();
 
     return ChapterPreview(

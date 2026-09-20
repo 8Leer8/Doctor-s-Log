@@ -25,25 +25,35 @@ class DialogueGroupItem extends ReaderItem {
   });
 }
 
+/// A scene-change divider. Emitted by the parser whenever a
+/// `[Background(image="...")]` value changes mid-part.
+///
+/// [elementIndexInPart] is a bookkeeping index used only for
+/// resume-position tracking — it is never rendered to the user.
+///
+/// Scene breaks are:
+///   - never gated (no choice/predicate)
+///   - never TOC targets
+///   - never valid resume targets (resume always lands on the next
+///     dialogue line instead)
+///   - always rendered as a plain inline divider
+class SceneBreakItem extends ReaderItem {
+  final int partIndexInList;
+  final int elementIndexInPart;
+
+  const SceneBreakItem({
+    required this.partIndexInList,
+    required this.elementIndexInPart,
+  });
+}
+
 class TransitionItem extends ReaderItem {
   final String? previousTitle;
   final String currentTitle;
   final int partIndexInList;
-
-  /// The reason the part immediately before this transition failed to
-  /// load ('no_internet' | 'unknown'), or null if it's loaded / not
-  /// applicable / still pending.
   final String? backwardMissingReason;
-
-  /// Same, for the part this transition represents going forward.
   final String? forwardMissingReason;
-
-  /// True while the backward-adjacent part is being fetched AND we're
-  /// past the initial "settle" window. Renders an orange divider with
-  /// no error text.
   final bool isPendingBackward;
-
-  /// Same for the forward-adjacent part.
   final bool isPendingForward;
 
   TransitionItem({

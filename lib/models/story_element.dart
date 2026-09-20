@@ -19,7 +19,7 @@ abstract class StoryElement {
   bool isVisible(Map<int, String> selections) {
     if (requiredValue == null) return true;
     final chosen = selections[gateChoiceId];
-    if (chosen == null) return false; // choice not made yet, stay hidden
+    if (chosen == null) return false;
     return requiredValue!.split(';').map((s) => s.trim()).contains(chosen);
   }
 }
@@ -46,4 +46,12 @@ class StoryChoiceElement extends StoryElement {
     super.requiredValue,
     super.gateChoiceId,
   });
+}
+
+/// Emitted by the parser whenever a `[Background(image="...")]` tag's
+/// image value differs from the previously-seen one. Purely
+/// informational — never gated, never a choice, never a resume target.
+/// Renders as a subtle inline divider ("~ Scene shifts ~").
+class SceneBreakElement extends StoryElement {
+  const SceneBreakElement();
 }

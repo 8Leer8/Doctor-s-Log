@@ -200,6 +200,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         _currentElementIndexInPart = atTop.elementIndexInPart;
       } else if (atTop is DialogueGroupItem) {
         _currentElementIndexInPart = atTop.firstElementIndexInPart;
+      } else if (atTop is SceneBreakItem) {
+        _currentElementIndexInPart = atTop.elementIndexInPart;
       }
     }
 
@@ -287,6 +289,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
         item.firstElementIndexInPart,
         alignment,
       );
+    } else if (item is SceneBreakItem) {
+      return ScrollAnchor.content(
+        item.partIndexInList,
+        item.elementIndexInPart,
+        alignment,
+      );
     } else if (item is TransitionItem) {
       return ScrollAnchor.transition(item.partIndexInList, alignment);
     } else if (item is LockedSectionItem) {
@@ -314,6 +322,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
           if (item is DialogueGroupItem &&
               item.partIndexInList == anchor.partIndexInList &&
               item.firstElementIndexInPart == anchor.elementIndexInPart) {
+            return i;
+          }
+          if (item is SceneBreakItem &&
+              item.partIndexInList == anchor.partIndexInList &&
+              item.elementIndexInPart == anchor.elementIndexInPart) {
             return i;
           }
           break;
@@ -365,6 +378,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         final belongsToTargetPart =
             (next is ContentItem && next.partIndexInList == partIndexInList) ||
             (next is DialogueGroupItem &&
+                next.partIndexInList == partIndexInList) ||
+            (next is SceneBreakItem &&
                 next.partIndexInList == partIndexInList) ||
             (next is LockedSectionItem &&
                 next.partIndexInList == partIndexInList);
@@ -454,7 +469,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
       return;
     }
 
-    // Enter the pending (orange) state immediately.
     setState(() {
       _loadingParts.add(partIndexInList);
       _pendingPartIndex = partIndexInList;
@@ -468,8 +482,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     if (!mounted) return;
 
-    // Enforce a minimum visible duration for the pending state, so a
-    // cache hit or fast network doesn't flash orange for a single frame.
     final elapsed = DateTime.now().difference(startedAt);
     final remaining = _kMinPendingDuration - elapsed;
     if (remaining > Duration.zero) {
@@ -477,8 +489,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
     if (!mounted) return;
 
-    // Then settle briefly before resolving, so the color/label change
-    // reads as a transition instead of a snap.
     await Future.delayed(_kSettleDelay);
     if (!mounted) return;
 
@@ -595,8 +605,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Wrapper around the extracted builder that also updates the reader's
   /// internal index maps after each build.
   List<ReaderItem> _buildVisibleItems() {
-    // Determine which side the pending part sits on so we can hand the
-    // correct flag to the builder.
     int? pendingBackward;
     int? pendingForward;
     if (_pendingPartIndex != null) {
@@ -605,7 +613,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
       } else if (_hi != null && _pendingPartIndex! > _hi!) {
         pendingForward = _pendingPartIndex;
       } else if (_lo == null) {
-        // Nothing loaded yet — treat as forward.
         pendingForward = _pendingPartIndex;
       }
     }
@@ -655,6 +662,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
               item.firstElementIndexInPart >= resumeElement) {
             return i;
           }
+          // SceneBreakItem is intentionally NOT a valid resume target.
+          // If the saved position lands on a scene break, skip it and
+          // resume at the next piece of real content below.
         }
       }
     }

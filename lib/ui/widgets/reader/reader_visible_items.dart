@@ -84,6 +84,16 @@ VisibleItemsResult buildReaderVisibleItems({
 
       for (int e = 0; e < elements.length; e++) {
         final el = elements[e];
+
+        // ── Scene breaks bypass the ContentItem wrapper entirely.
+        //    They are not gated, not resumable, and never appear in
+        //    the choice map.
+        if (el is SceneBreakElement) {
+          lockedItemIndex = null;
+          flat.add(SceneBreakItem(partIndexInList: i, elementIndexInPart: e));
+          continue;
+        }
+
         final item = ContentItem(el, i, e);
 
         if (el.requiredValue == null) {
@@ -107,7 +117,9 @@ VisibleItemsResult buildReaderVisibleItems({
           continue;
         }
 
-        if (isPast) continue;
+        if (isPast) {
+          continue;
+        }
 
         final gateChoiceId = el.gateChoiceId;
         final lastVisible = flat.isNotEmpty ? flat.last : null;
@@ -193,12 +205,18 @@ VisibleItemsResult buildReaderVisibleItems({
   );
 }
 
+/// Collapses consecutive ContentItems whose element is a
+/// StoryLineElement with the same speaker. A SceneBreakItem or any
+/// other ReaderItem subtype breaks the run naturally — dialogue on
+/// either side of a scene change stays in two separate groups, even
+/// if the speaker is identical.
 List<ReaderItem> _groupDialogue(List<ReaderItem> items) {
   final out = <ReaderItem>[];
   int i = 0;
 
   while (i < items.length) {
     final item = items[i];
+
     if (item is ContentItem && item.element is StoryLineElement) {
       final first = item.element as StoryLineElement;
       final speaker = first.speaker;
@@ -209,6 +227,9 @@ List<ReaderItem> _groupDialogue(List<ReaderItem> items) {
       int j = i + 1;
       while (j < items.length) {
         final next = items[j];
+        // Any non-ContentItem (SceneBreakItem, TransitionItem, etc.)
+        // breaks the run — that's the desired behavior for scene
+        // changes.
         if (next is! ContentItem) break;
         final el = next.element;
         if (el is! StoryLineElement) break;
@@ -234,6 +255,7 @@ List<ReaderItem> _groupDialogue(List<ReaderItem> items) {
       i = j;
       continue;
     }
+
     out.add(item);
     i++;
   }
