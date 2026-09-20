@@ -14,6 +14,12 @@ class StoryParser {
     r'^\[Background\(image="([^"]*)"',
   );
   static final RegExp _imageRegex = RegExp(r'^\[Image\(image="([^"]*)"');
+  static final RegExp _stickerRegex = RegExp(
+    r'^\[Sticker\([^\]]*text\s*=\s*"((?:[^"\\]|\\.)*)"',
+  );
+  static final RegExp _subtitleRegex = RegExp(
+    r'^\[Subtitle\([^\]]*text\s*=\s*"((?:[^"\\]|\\.)*)"',
+  );
   static final RegExp _charslotRegex = RegExp(
     r'^\[charslot\([^\]]*name\s*=\s*"([^"]*)"',
   );
@@ -28,6 +34,13 @@ class StoryParser {
     dotAll: true,
   );
 
+  static String _unescapeText(String s) {
+    return s
+        .replaceAll(r'\n', '\n')
+        .replaceAll(r'\"', '"')
+        .replaceAll(r'\\', '\\');
+  }
+
   static List<StoryElement> parse(String raw) {
     final result = <StoryElement>[];
 
@@ -36,6 +49,7 @@ class StoryParser {
     String? currentRequiredValue;
 
     String? lastBackgroundImage;
+    String? lastImageId;
     String? currentPortraitId;
 
     for (final rawLine in raw.split('\n')) {
@@ -80,16 +94,48 @@ class StoryParser {
           );
           lastBackgroundImage = image;
         }
+        lastImageId = null;
         continue;
       }
 
       final imageMatch = _imageRegex.firstMatch(trimmedLeft);
       if (imageMatch != null) {
         final image = imageMatch.group(1) ?? '';
-        if (image.isNotEmpty) {
+        if (image.isNotEmpty && image != lastImageId) {
           result.add(
             StoryImageElement(
               imageId: image,
+              requiredValue: currentRequiredValue,
+              gateChoiceId: currentGateChoiceId,
+            ),
+          );
+          lastImageId = image;
+        }
+        continue;
+      }
+
+      final stickerMatch = _stickerRegex.firstMatch(trimmedLeft);
+      if (stickerMatch != null) {
+        final text = _unescapeText(stickerMatch.group(1) ?? '');
+        if (text.isNotEmpty) {
+          result.add(
+            StoryLineElement(
+              text: text,
+              requiredValue: currentRequiredValue,
+              gateChoiceId: currentGateChoiceId,
+            ),
+          );
+        }
+        continue;
+      }
+
+      final subtitleMatch = _subtitleRegex.firstMatch(trimmedLeft);
+      if (subtitleMatch != null) {
+        final text = _unescapeText(subtitleMatch.group(1) ?? '');
+        if (text.isNotEmpty) {
+          result.add(
+            StoryLineElement(
+              text: text,
               requiredValue: currentRequiredValue,
               gateChoiceId: currentGateChoiceId,
             ),
