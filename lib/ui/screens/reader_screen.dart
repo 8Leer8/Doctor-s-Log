@@ -48,7 +48,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final _itemScrollController = ItemScrollController();
   final _itemPositionsListener = ItemPositionsListener.create();
 
-  // --- Lazy-loading state -----------------------------------------------
   final Set<int> _loadedParts = {};
   final Map<int, String> _missingParts = {};
   final Set<int> _loadingParts = {};
@@ -61,19 +60,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   String? _fatalError;
 
-  /// Part currently being fetched on scroll-approach. Drives the orange
-  /// "pending" divider. Held for at least [_kMinPendingDuration] and
-  /// then [_kSettleDelay] so the transition reads as a smooth beat
-  /// rather than a snap.
   int? _pendingPartIndex;
 
-  /// Minimum time the pending (orange) divider stays visible no matter
-  /// how fast the fetch resolves. Prevents a one-frame flash when the
-  /// part is already cached or the network is fast.
   static const Duration _kMinPendingDuration = Duration(milliseconds: 600);
-
-  /// Extra settle time after the fetch resolves, before flipping to the
-  /// final (normal or error) state. Gives the visual transition a beat.
   static const Duration _kSettleDelay = Duration(milliseconds: 300);
 
   final Map<String, String> _selections = {};
@@ -202,6 +191,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         _currentElementIndexInPart = atTop.firstElementIndexInPart;
       } else if (atTop is SceneBreakItem) {
         _currentElementIndexInPart = atTop.elementIndexInPart;
+      } else if (atTop is SceneImageItem) {
+        _currentElementIndexInPart = atTop.elementIndexInPart;
       }
     }
 
@@ -295,6 +286,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
         item.elementIndexInPart,
         alignment,
       );
+    } else if (item is SceneImageItem) {
+      return ScrollAnchor.content(
+        item.partIndexInList,
+        item.elementIndexInPart,
+        alignment,
+      );
     } else if (item is TransitionItem) {
       return ScrollAnchor.transition(item.partIndexInList, alignment);
     } else if (item is LockedSectionItem) {
@@ -325,6 +322,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
             return i;
           }
           if (item is SceneBreakItem &&
+              item.partIndexInList == anchor.partIndexInList &&
+              item.elementIndexInPart == anchor.elementIndexInPart) {
+            return i;
+          }
+          if (item is SceneImageItem &&
               item.partIndexInList == anchor.partIndexInList &&
               item.elementIndexInPart == anchor.elementIndexInPart) {
             return i;
@@ -380,6 +382,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
             (next is DialogueGroupItem &&
                 next.partIndexInList == partIndexInList) ||
             (next is SceneBreakItem &&
+                next.partIndexInList == partIndexInList) ||
+            (next is SceneImageItem &&
                 next.partIndexInList == partIndexInList) ||
             (next is LockedSectionItem &&
                 next.partIndexInList == partIndexInList);
@@ -602,8 +606,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
   }
 
-  /// Wrapper around the extracted builder that also updates the reader's
-  /// internal index maps after each build.
   List<ReaderItem> _buildVisibleItems() {
     int? pendingBackward;
     int? pendingForward;
@@ -662,9 +664,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
               item.firstElementIndexInPart >= resumeElement) {
             return i;
           }
-          // SceneBreakItem is intentionally NOT a valid resume target.
-          // If the saved position lands on a scene break, skip it and
-          // resume at the next piece of real content below.
         }
       }
     }
@@ -747,6 +746,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     final itemBuilder = ReaderItemBuilder(
       settings: _settings,
+      chapterTitle: widget.chapterTitle,
       selections: _selections,
       missingParts: _missingParts,
       loadingParts: _loadingParts,

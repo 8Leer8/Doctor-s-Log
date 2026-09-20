@@ -13,15 +13,16 @@ class StoryParser {
   static final RegExp _backgroundRegex = RegExp(
     r'^\[Background\(image="([^"]*)"',
   );
+  static final RegExp _imageRegex = RegExp(r'^\[Image\(image="([^"]*)"');
+  static final RegExp _charslotRegex = RegExp(
+    r'^\[charslot\([^\]]*name\s*=\s*"([^"]*)"',
+  );
+  static final RegExp _charslotBareRegex = RegExp(
+    r'^\[charslot\(\s*\)\]|^\[charslot\]',
+  );
   static final RegExp _animTextRegex = RegExp(
     r'^\[animtext\([^\]]*\)\]\s*(.*)$',
   );
-
-  /// Matches a single `<p=N>...</p>` fragment, capturing the inner text.
-  ///
-  /// Note: the game's data uses a shorthand closing tag — `</>` — rather
-  /// than the well-formed `</p>`. The trailing `p?` makes the `p`
-  /// optional so both forms match.
   static final RegExp _animTextParagraphRegex = RegExp(
     r'<p=\d+>(.*?)</p?>',
     dotAll: true,
@@ -33,15 +34,15 @@ class StoryParser {
     int choiceCounter = 0;
     int? currentGateChoiceId;
     String? currentRequiredValue;
+
     String? lastBackgroundImage;
+    String? currentPortraitId;
 
     for (final rawLine in raw.split('\n')) {
       final line = rawLine.trimRight();
       final trimmedLeft = line.trimLeft();
       if (trimmedLeft.isEmpty) continue;
 
-      // ── animtext overlay (dates, location stamps, ambient text).
-      //    Must come before the generic "starts with [" skip.
       final animMatch = _animTextRegex.firstMatch(trimmedLeft);
       if (animMatch != null) {
         final payload = animMatch.group(1) ?? '';
@@ -66,16 +67,46 @@ class StoryParser {
         continue;
       }
 
-      // ── Background tag.
       final backgroundMatch = _backgroundRegex.firstMatch(trimmedLeft);
       if (backgroundMatch != null) {
         final image = backgroundMatch.group(1) ?? '';
-        if (lastBackgroundImage == null) {
-          lastBackgroundImage = image;
-        } else if (image != lastBackgroundImage) {
-          result.add(const SceneBreakElement());
+        if (image.isNotEmpty && image != lastBackgroundImage) {
+          result.add(
+            SceneBreakElement(
+              backgroundImageId: image,
+              requiredValue: currentRequiredValue,
+              gateChoiceId: currentGateChoiceId,
+            ),
+          );
           lastBackgroundImage = image;
         }
+        continue;
+      }
+
+      final imageMatch = _imageRegex.firstMatch(trimmedLeft);
+      if (imageMatch != null) {
+        final image = imageMatch.group(1) ?? '';
+        if (image.isNotEmpty) {
+          result.add(
+            StoryImageElement(
+              imageId: image,
+              requiredValue: currentRequiredValue,
+              gateChoiceId: currentGateChoiceId,
+            ),
+          );
+        }
+        continue;
+      }
+
+      if (_charslotBareRegex.hasMatch(trimmedLeft)) {
+        currentPortraitId = null;
+        continue;
+      }
+
+      final charslotMatch = _charslotRegex.firstMatch(trimmedLeft);
+      if (charslotMatch != null) {
+        final name = charslotMatch.group(1) ?? '';
+        currentPortraitId = name.isEmpty ? null : name;
         continue;
       }
 
@@ -122,6 +153,7 @@ class StoryParser {
             StoryLineElement(
               speaker: speaker,
               text: text,
+              speakerPortraitId: currentPortraitId,
               requiredValue: currentRequiredValue,
               gateChoiceId: currentGateChoiceId,
             ),

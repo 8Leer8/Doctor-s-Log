@@ -8,6 +8,7 @@ class ContentItem extends ReaderItem {
   final StoryElement element;
   final int partIndexInList;
   final int elementIndexInPart;
+
   ContentItem(this.element, this.partIndexInList, this.elementIndexInPart);
 }
 
@@ -17,33 +18,42 @@ class DialogueGroupItem extends ReaderItem {
   final int partIndexInList;
   final int firstElementIndexInPart;
 
+  final String? speakerPortraitId;
+
   const DialogueGroupItem({
     required this.speaker,
     required this.lines,
     required this.partIndexInList,
     required this.firstElementIndexInPart,
+    this.speakerPortraitId,
   });
 }
 
-/// A scene-change divider. Emitted by the parser whenever a
-/// `[Background(image="...")]` value changes mid-part.
-///
-/// [elementIndexInPart] is a bookkeeping index used only for
-/// resume-position tracking — it is never rendered to the user.
-///
-/// Scene breaks are:
-///   - never gated (no choice/predicate)
-///   - never TOC targets
-///   - never valid resume targets (resume always lands on the next
-///     dialogue line instead)
-///   - always rendered as a plain inline divider
 class SceneBreakItem extends ReaderItem {
   final int partIndexInList;
   final int elementIndexInPart;
 
+  /// Raw background image ID (e.g. "72_g15_wideunder").
+  final String backgroundImageId;
+
   const SceneBreakItem({
     required this.partIndexInList,
     required this.elementIndexInPart,
+    required this.backgroundImageId,
+  });
+}
+
+class SceneImageItem extends ReaderItem {
+  final int partIndexInList;
+  final int elementIndexInPart;
+
+  /// Raw CG image ID (e.g. "72_i10_1").
+  final String imageId;
+
+  const SceneImageItem({
+    required this.partIndexInList,
+    required this.elementIndexInPart,
+    required this.imageId,
   });
 }
 
@@ -72,6 +82,7 @@ class EndOfChapterMarker extends ReaderItem {}
 class LockedSectionItem extends ReaderItem {
   final int partIndexInList;
   final int gateChoiceId;
+
   LockedSectionItem({
     required this.partIndexInList,
     required this.gateChoiceId,

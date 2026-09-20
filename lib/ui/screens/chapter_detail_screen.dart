@@ -4,6 +4,8 @@ import '../../models/chapter_preview.dart';
 import '../../models/reader_part.dart';
 import '../../data/remote/story_data_source.dart';
 import '../../data/parser/word_count_estimator.dart';
+import '../../data/parser/story_parser.dart';
+import '../../data/parser/image_prefetcher.dart';
 import '../../data/local/chapter_descriptions_loader.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../../data/local/download_store.dart';
@@ -17,6 +19,7 @@ import '../widgets/chapter_detail/chapter_detail_top_bar.dart';
 import '../widgets/chapter_detail/chapter_header_image.dart';
 import '../widgets/chapter_detail/part_filter_sort_sheet.dart';
 import '../widgets/chapter_detail/detail_part_row.dart';
+import '../../models/story_element.dart';
 
 const double _kToolbarHeight = 64;
 const double _kFallbackOverlayHeight = 140;
@@ -72,11 +75,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     super.dispose();
   }
 
-  // ─────────────────────────── DATA LOADING ───────────────────────────
-
   Future<void> _loadFinishedProgress() async {
-    final finishedSet =
-        await ReadingProgressStore.getFinishedParts(widget.chapter.number);
+    final finishedSet = await ReadingProgressStore.getFinishedParts(
+      widget.chapter.number,
+    );
     if (!mounted || finishedSet.isEmpty) return;
     setState(() {
       for (final i in finishedSet) {
@@ -91,7 +93,9 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       if (_finished[i]) finishedIndices.add(i);
     }
     await ReadingProgressStore.setFinishedParts(
-        widget.chapter.number, finishedIndices);
+      widget.chapter.number,
+      finishedIndices,
+    );
   }
 
   Future<void> _loadDownloadStates() async {
@@ -134,10 +138,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
   }
 
-  // ─────────────────────────── DOWNLOAD FLOW ───────────────────────────
-
-  /// Detects "no internet" style failures from Dio and returns a
-  /// friendly, Mihon-style message for the toast.
   bool _isNetworkError(Object e) {
     final s = e.toString().toLowerCase();
     return s.contains('socketexception') ||
@@ -156,7 +156,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     if (currentState == DownloadState.downloaded) {
       final confirmed = await showDeleteDownloadDialog(context);
       if (confirmed != true) return;
+
+      await ImagePrefetcher.releaseImagesForPart(filename);
       await DownloadStore.deleteContent(filename);
+
       if (mounted) {
         setState(() => _downloadStates[index] = DownloadState.notDownloaded);
       }
@@ -180,14 +183,41 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         throw Exception('Failed to persist content to disk');
       }
 
+      List<StoryElement> elements;
+      try {
+        elements = StoryParser.parse(content);
+      } catch (_) {
+        elements = const [];
+      }
+
+      PrefetchResult? prefetchResult;
+      try {
+        prefetchResult = await ImagePrefetcher.prefetch(
+          elements: elements,
+          partFilename: filename,
+        );
+      } catch (_) {
+        prefetchResult = null;
+      }
+
       if (mounted) {
         setState(() => _downloadStates[index] = DownloadState.downloaded);
-        AppToast.show(
-          context,
-          'Downloaded: ${widget.chapter.parts[index].title}',
-          icon: Icons.check_circle_outline,
-          accent: AppColors.amber,
-        );
+
+        if (prefetchResult != null && prefetchResult.failedIds.isNotEmpty) {
+          AppToast.show(
+            context,
+            'Downloaded · ${prefetchResult.failedIds.length} image(s) failed',
+            icon: Icons.warning_amber_rounded,
+            accent: AppColors.amber,
+          );
+        } else {
+          AppToast.show(
+            context,
+            'Downloaded: ${widget.chapter.parts[index].title}',
+            icon: Icons.check_circle_outline,
+            accent: AppColors.amber,
+          );
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -209,8 +239,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
   }
 
-  // ─────────────────────────── SCROLL / TOP BAR ───────────────────────────
-
   double _headerHeight(BuildContext context) =>
       MediaQuery.of(context).size.width;
 
@@ -230,7 +258,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     final threshold = _headerHeight(context) - _kToolbarHeight;
     final titleStart = threshold + 80;
     const titleRangePx = 60.0;
-    final titleFraction = ((offset - titleStart) / titleRangePx).clamp(0.0, 1.0);
+    final titleFraction = ((offset - titleStart) / titleRangePx).clamp(
+      0.0,
+      1.0,
+    );
 
     if (fillFraction != _collapseFraction || titleFraction != _titleFraction) {
       setState(() {
@@ -239,8 +270,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       });
     }
   }
-
-  // ─────────────────────────── PART NAVIGATION ───────────────────────────
 
   List<ReaderPart> get _playableParts {
     final result = <ReaderPart>[];
@@ -253,8 +282,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     return result;
   }
 
-  Future<void> _openPart(int originalIndex,
-      {bool useResumePosition = false}) async {
+  Future<void> _openPart(
+    int originalIndex, {
+    bool useResumePosition = false,
+  }) async {
     final proceed = await showSkipAheadDialogIfNeeded(
       context: context,
       finished: _finished,
@@ -263,8 +294,9 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     if (!proceed || !mounted) return;
 
     final playable = _playableParts;
-    final startAt =
-        playable.indexWhere((rp) => rp.originalIndex == originalIndex);
+    final startAt = playable.indexWhere(
+      (rp) => rp.originalIndex == originalIndex,
+    );
 
     if (startAt == -1) {
       AppToast.show(
@@ -276,38 +308,37 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       return;
     }
 
-  // ─────────── PREFLIGHT CHECK ───────────
-final filename = playable[startAt].part.filename!;
-final isDownloaded = await DownloadStore.isDownloaded(filename);
+    final filename = playable[startAt].part.filename!;
+    final isDownloaded = await DownloadStore.isDownloaded(filename);
 
-if (!isDownloaded) {
-  try {
-    await _dataSource.fetchRawStory(filename);
-    // Online — proceed.
-  } catch (e) {
-    if (!mounted) return;
-    if (_isNetworkError(e)) {
-      AppToast.show(
-        context,
-        'Not downloaded · No internet',
-        icon: Icons.cloud_off_rounded,
-        accent: Colors.redAccent,
-      );
-    } else {
-      AppToast.failed(context, 'Failed to load part');
+    if (!isDownloaded) {
+      try {
+        await _dataSource.fetchRawStory(filename);
+      } catch (e) {
+        if (!mounted) return;
+        if (_isNetworkError(e)) {
+          AppToast.show(
+            context,
+            'Not downloaded · No internet',
+            icon: Icons.cloud_off_rounded,
+            accent: Colors.redAccent,
+          );
+        } else {
+          AppToast.failed(context, 'Failed to load part');
+        }
+        return;
+      }
     }
-    return;
-  }
-}
-// ─────────── END PREFLIGHT CHECK ───────────
 
-    final initialChoices =
-        await ReadingProgressStore.getChoices(widget.chapter.number);
+    final initialChoices = await ReadingProgressStore.getChoices(
+      widget.chapter.number,
+    );
     int? resumePart;
     int? resumeElement;
     if (useResumePosition) {
-      final resume =
-          await ReadingProgressStore.getResumePosition(widget.chapter.number);
+      final resume = await ReadingProgressStore.getResumePosition(
+        widget.chapter.number,
+      );
       if (resume != null) {
         resumePart = resume.$1;
         resumeElement = resume.$2;
@@ -332,9 +363,7 @@ if (!isDownloaded) {
 
     if (furthestOriginalIndex == null || !mounted) return;
     setState(() {
-      for (int i = 0;
-          i <= furthestOriginalIndex && i < _finished.length;
-          i++) {
+      for (int i = 0; i <= furthestOriginalIndex && i < _finished.length; i++) {
         _finished[i] = true;
       }
     });
@@ -345,8 +374,6 @@ if (!isDownloaded) {
     final nextIndex = _finished.indexWhere((f) => !f);
     _openPart(nextIndex == -1 ? 0 : nextIndex, useResumePosition: true);
   }
-
-  // ─────────────────────────── ACTIONS ───────────────────────────
 
   void _markAllFinished() {
     setState(() => _finished = List.filled(_finished.length, true));
@@ -367,8 +394,6 @@ if (!isDownloaded) {
       onSortChanged: (order) => setState(() => _sortOrder = order),
     );
   }
-
-  // ─────────────────────────── BUILD ───────────────────────────
 
   int get _finishedCount => _finished.where((f) => f).length;
 
@@ -415,8 +440,8 @@ if (!isDownloaded) {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                    height: (headerHeight - overlayHeight)
-                        .clamp(0, headerHeight)),
+                  height: (headerHeight - overlayHeight).clamp(0, headerHeight),
+                ),
                 ChapterDetailHeader(
                   key: _overlayKey,
                   chapter: chapter,

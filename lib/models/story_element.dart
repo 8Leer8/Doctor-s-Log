@@ -5,11 +5,6 @@ class StoryChoiceOption {
   const StoryChoiceOption({required this.label, required this.value});
 }
 
-/// Base class for anything that can appear in a parsed story.
-/// requiredValue + gateChoiceId together mean:
-/// "only show this if the player picked `requiredValue` (or one of the
-/// semicolon-separated values in it) for choice #gateChoiceId."
-/// If requiredValue is null, the element always shows.
 abstract class StoryElement {
   final String? requiredValue;
   final int? gateChoiceId;
@@ -27,10 +22,12 @@ abstract class StoryElement {
 class StoryLineElement extends StoryElement {
   final String? speaker;
   final String text;
+  final String? speakerPortraitId;
 
   const StoryLineElement({
     this.speaker,
     required this.text,
+    this.speakerPortraitId,
     super.requiredValue,
     super.gateChoiceId,
   });
@@ -48,10 +45,22 @@ class StoryChoiceElement extends StoryElement {
   });
 }
 
-/// Emitted by the parser whenever a `[Background(image="...")]` tag's
-/// image value differs from the previously-seen one. Purely
-/// informational — never gated, never a choice, never a resume target.
-/// Renders as a subtle inline divider ("~ Scene shifts ~").
 class SceneBreakElement extends StoryElement {
-  const SceneBreakElement();
+  final String backgroundImageId;
+
+  const SceneBreakElement({
+    required this.backgroundImageId,
+    super.requiredValue,
+    super.gateChoiceId,
+  });
+}
+
+class StoryImageElement extends StoryElement {
+  final String imageId;
+
+  const StoryImageElement({
+    required this.imageId,
+    super.requiredValue,
+    super.gateChoiceId,
+  });
 }

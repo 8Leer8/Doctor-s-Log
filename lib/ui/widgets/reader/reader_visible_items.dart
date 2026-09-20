@@ -20,6 +20,18 @@ class VisibleItemsResult {
   });
 }
 
+bool _isElementVisible(
+  StoryElement el,
+  int partIndex,
+  Map<String, String> selections,
+) {
+  if (el.requiredValue == null) return true;
+  final key = '$partIndex-${el.gateChoiceId}';
+  final chosen = selections[key];
+  if (chosen == null) return false;
+  return el.requiredValue!.split(';').map((s) => s.trim()).contains(chosen);
+}
+
 VisibleItemsResult buildReaderVisibleItems({
   required List<ReaderPart> readerParts,
   required int startAt,
@@ -85,12 +97,33 @@ VisibleItemsResult buildReaderVisibleItems({
       for (int e = 0; e < elements.length; e++) {
         final el = elements[e];
 
-        // ── Scene breaks bypass the ContentItem wrapper entirely.
-        //    They are not gated, not resumable, and never appear in
-        //    the choice map.
         if (el is SceneBreakElement) {
+          if (!_isElementVisible(el, i, selections)) {
+            continue;
+          }
           lockedItemIndex = null;
-          flat.add(SceneBreakItem(partIndexInList: i, elementIndexInPart: e));
+          flat.add(
+            SceneBreakItem(
+              partIndexInList: i,
+              elementIndexInPart: e,
+              backgroundImageId: el.backgroundImageId,
+            ),
+          );
+          continue;
+        }
+
+        if (el is StoryImageElement) {
+          if (!_isElementVisible(el, i, selections)) {
+            continue;
+          }
+          lockedItemIndex = null;
+          flat.add(
+            SceneImageItem(
+              partIndexInList: i,
+              elementIndexInPart: e,
+              imageId: el.imageId,
+            ),
+          );
           continue;
         }
 
@@ -205,11 +238,6 @@ VisibleItemsResult buildReaderVisibleItems({
   );
 }
 
-/// Collapses consecutive ContentItems whose element is a
-/// StoryLineElement with the same speaker. A SceneBreakItem or any
-/// other ReaderItem subtype breaks the run naturally — dialogue on
-/// either side of a scene change stays in two separate groups, even
-/// if the speaker is identical.
 List<ReaderItem> _groupDialogue(List<ReaderItem> items) {
   final out = <ReaderItem>[];
   int i = 0;
@@ -227,9 +255,6 @@ List<ReaderItem> _groupDialogue(List<ReaderItem> items) {
       int j = i + 1;
       while (j < items.length) {
         final next = items[j];
-        // Any non-ContentItem (SceneBreakItem, TransitionItem, etc.)
-        // breaks the run — that's the desired behavior for scene
-        // changes.
         if (next is! ContentItem) break;
         final el = next.element;
         if (el is! StoryLineElement) break;
@@ -239,18 +264,23 @@ List<ReaderItem> _groupDialogue(List<ReaderItem> items) {
         j++;
       }
 
-      if (run.length == 1) {
-        out.add(item);
-      } else {
-        out.add(
-          DialogueGroupItem(
-            speaker: speaker,
-            lines: run,
-            partIndexInList: partIndex,
-            firstElementIndexInPart: firstElementIndex,
-          ),
-        );
+      String? groupPortrait;
+      for (final line in run) {
+        if (line.speakerPortraitId != null) {
+          groupPortrait = line.speakerPortraitId;
+          break;
+        }
       }
+
+      out.add(
+        DialogueGroupItem(
+          speaker: speaker,
+          lines: run,
+          partIndexInList: partIndex,
+          firstElementIndexInPart: firstElementIndex,
+          speakerPortraitId: groupPortrait,
+        ),
+      );
 
       i = j;
       continue;
