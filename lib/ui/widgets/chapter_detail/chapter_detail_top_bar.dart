@@ -5,11 +5,17 @@ const double _kToolbarHeight = 64;
 
 class ChapterDetailTopBar extends StatelessWidget {
   final String title;
-  final double collapseFraction; // 0..1 — bar background fill (fast)
-  final double titleFraction;    // 0..1 — title appearance (slower)
+  final double collapseFraction;
+  final double titleFraction;
   final VoidCallback onBack;
   final VoidCallback onDownloadAll;
   final VoidCallback onFilterTap;
+
+  /// When true, the bar's background is always fully opaque and the
+  /// icons are always their scrolled-in colors. Used for side stories,
+  /// where the header image sits below the bar rather than behind it.
+  /// The title still fades in via [titleFraction].
+  final bool solid;
 
   const ChapterDetailTopBar({
     super.key,
@@ -19,14 +25,25 @@ class ChapterDetailTopBar extends StatelessWidget {
     required this.onBack,
     required this.onDownloadAll,
     required this.onFilterTap,
+    this.solid = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final statusBarHeight = MediaQuery.of(context).padding.top;
-    final bgColor = AppColors.background.withValues(alpha: collapseFraction);
-    final iconColor = Color.lerp(Colors.white, AppColors.coldGray, collapseFraction)!;
-    final backColor = Color.lerp(Colors.white, AppColors.textPrimary, collapseFraction)!;
+
+    final effectiveCollapse = solid ? 1.0 : collapseFraction;
+    final bgColor = AppColors.background.withValues(alpha: effectiveCollapse);
+    final iconColor = Color.lerp(
+      Colors.white,
+      AppColors.coldGray,
+      effectiveCollapse,
+    )!;
+    final backColor = Color.lerp(
+      Colors.white,
+      AppColors.textPrimary,
+      effectiveCollapse,
+    )!;
     final titleVisible = titleFraction >= 0.999;
 
     return Container(
@@ -36,7 +53,7 @@ class ChapterDetailTopBar extends StatelessWidget {
         color: bgColor,
         border: Border(
           bottom: BorderSide(
-            color: AppColors.border.withValues(alpha: collapseFraction),
+            color: AppColors.border.withValues(alpha: effectiveCollapse),
             width: 1,
           ),
         ),
@@ -86,15 +103,24 @@ class ChapterDetailTopBar extends StatelessWidget {
                 itemBuilder: (context) => const [
                   PopupMenuItem(
                     value: 'refresh',
-                    child: Text('Refresh', style: TextStyle(color: AppColors.textPrimary)),
+                    child: Text(
+                      'Refresh',
+                      style: TextStyle(color: AppColors.textPrimary),
+                    ),
                   ),
                   PopupMenuItem(
                     value: 'wiki',
-                    child: Text('Open Wiki', style: TextStyle(color: AppColors.textPrimary)),
+                    child: Text(
+                      'Open Wiki',
+                      style: TextStyle(color: AppColors.textPrimary),
+                    ),
                   ),
                   PopupMenuItem(
                     value: 'share',
-                    child: Text('Share', style: TextStyle(color: AppColors.textPrimary)),
+                    child: Text(
+                      'Share',
+                      style: TextStyle(color: AppColors.textPrimary),
+                    ),
                   ),
                 ],
               ),

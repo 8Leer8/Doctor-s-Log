@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
+import '../../models/story_category.dart';
 import '../../data/repository/chapter_repository.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../widgets/chapter_card.dart';
+import '../widgets/chapter_landscape_card.dart';
 import 'chapter_detail_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -43,7 +45,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _loadProgressFor(List<ChapterPreview> chapters) async {
     for (final chapter in chapters) {
-      final finished = await ReadingProgressStore.getFinishedParts(chapter.number);
+      final finished = await ReadingProgressStore.getFinishedParts(
+        chapter.number,
+      );
       if (!mounted) return;
       setState(() => _finishedCounts[chapter.number] = finished.length);
     }
@@ -80,12 +84,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
     if (_mainTheme == null || _sideStories == null) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.amber));
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.amber),
+      );
     }
     return TabBarView(
       children: [
-        _ChapterGrid(chapters: _mainTheme!, finishedCounts: _finishedCounts),
-        _ChapterGrid(chapters: _sideStories!, finishedCounts: _finishedCounts),
+        _MainThemeGrid(chapters: _mainTheme!, finishedCounts: _finishedCounts),
+        _SideStoryList(
+          chapters: _sideStories!,
+          finishedCounts: _finishedCounts,
+        ),
       ],
     );
   }
@@ -99,8 +108,6 @@ class _TopBar extends StatelessWidget {
     final statusBarHeight = MediaQuery.of(context).padding.top;
 
     return Container(
-      // Paints status bar + toolbar as ONE continuous block using the
-      // same color as the screen body, matching Facebook's unified top.
       height: statusBarHeight + 52,
       padding: EdgeInsets.only(top: statusBarHeight),
       decoration: const BoxDecoration(
@@ -122,7 +129,11 @@ class _TopBar extends StatelessWidget {
             ),
             const Spacer(),
             IconButton(
-              icon: const Icon(Icons.search, color: AppColors.coldGray, size: 22),
+              icon: const Icon(
+                Icons.search,
+                color: AppColors.coldGray,
+                size: 22,
+              ),
               onPressed: () {},
             ),
             IconButton(
@@ -164,17 +175,20 @@ class _SectionTabBar extends StatelessWidget {
   }
 }
 
-class _ChapterGrid extends StatelessWidget {
+class _MainThemeGrid extends StatelessWidget {
   final List<ChapterPreview> chapters;
   final Map<String, int> finishedCounts;
 
-  const _ChapterGrid({required this.chapters, required this.finishedCounts});
+  const _MainThemeGrid({required this.chapters, required this.finishedCounts});
 
   @override
   Widget build(BuildContext context) {
     if (chapters.isEmpty) {
       return const Center(
-        child: Text('No chapters found', style: TextStyle(color: AppColors.textSecondary)),
+        child: Text(
+          'No chapters found',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
       );
     }
     return GridView.builder(
@@ -194,7 +208,51 @@ class _ChapterGrid extends StatelessWidget {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => ChapterDetailScreen(chapter: chapter),
+                builder: (_) => ChapterDetailScreen(
+                  chapter: chapter,
+                  category: StoryCategory.mainTheme,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SideStoryList extends StatelessWidget {
+  final List<ChapterPreview> chapters;
+  final Map<String, int> finishedCounts;
+
+  const _SideStoryList({required this.chapters, required this.finishedCounts});
+
+  @override
+  Widget build(BuildContext context) {
+    if (chapters.isEmpty) {
+      return const Center(
+        child: Text(
+          'No side stories found',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: chapters.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final chapter = chapters[index];
+        return ChapterLandscapeCard(
+          chapter: chapter,
+          finishedCount: finishedCounts[chapter.number] ?? 0,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ChapterDetailScreen(
+                  chapter: chapter,
+                  category: StoryCategory.sideStory,
+                ),
               ),
             );
           },

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
+import '../../models/story_category.dart';
 import '../../models/reader_part.dart';
+import '../../models/story_element.dart';
 import '../../data/remote/story_data_source.dart';
 import '../../data/parser/word_count_estimator.dart';
 import '../../data/parser/story_parser.dart';
@@ -19,15 +21,18 @@ import '../widgets/chapter_detail/chapter_detail_top_bar.dart';
 import '../widgets/chapter_detail/chapter_header_image.dart';
 import '../widgets/chapter_detail/part_filter_sort_sheet.dart';
 import '../widgets/chapter_detail/detail_part_row.dart';
-import '../../models/story_element.dart';
 
 const double _kToolbarHeight = 64;
-const double _kFallbackOverlayHeight = 140;
 
 class ChapterDetailScreen extends StatefulWidget {
   final ChapterPreview chapter;
+  final StoryCategory category;
 
-  const ChapterDetailScreen({super.key, required this.chapter});
+  const ChapterDetailScreen({
+    super.key,
+    required this.chapter,
+    required this.category,
+  });
 
   @override
   State<ChapterDetailScreen> createState() => _ChapterDetailScreenState();
@@ -37,7 +42,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   List<bool> _finished = [];
   final Map<int, DownloadState> _downloadStates = {};
   final _scrollController = ScrollController();
-  final _overlayKey = GlobalKey();
 
   final _dataSource = StoryDataSource();
   int? _totalWordCount;
@@ -48,10 +52,11 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   double _collapseFraction = 0;
   double _titleFraction = 0;
-  double? _overlayHeight;
 
   PartFilterMode _filterMode = PartFilterMode.all;
   PartSortOrder _sortOrder = PartSortOrder.ascending;
+
+  bool get _isSideStory => widget.category == StoryCategory.sideStory;
 
   @override
   void initState() {
@@ -65,7 +70,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     _computeWordCount();
     _loadDescription();
     _scrollController.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measureOverlay());
   }
 
   @override
@@ -117,7 +121,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         _description = desc;
         _descriptionLoaded = true;
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _measureOverlay());
     }
   }
 
@@ -239,15 +242,11 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
   }
 
-  double _headerHeight(BuildContext context) =>
+  double _mainThemeHeaderHeight(BuildContext context) =>
       MediaQuery.of(context).size.width;
 
-  void _measureOverlay() {
-    final box = _overlayKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box != null && box.hasSize && box.size.height != _overlayHeight) {
-      setState(() => _overlayHeight = box.size.height);
-    }
-  }
+  double _sideStoryHeaderHeight(BuildContext context) =>
+      MediaQuery.of(context).size.width / 3.12;
 
   void _onScroll() {
     final offset = _scrollController.offset;
@@ -255,8 +254,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     const fillRangePx = 40.0;
     final fillFraction = (offset / fillRangePx).clamp(0.0, 1.0);
 
-    final threshold = _headerHeight(context) - _kToolbarHeight;
-    final titleStart = threshold + 80;
+    final headerHeight = _isSideStory
+        ? _sideStoryHeaderHeight(context)
+        : _mainThemeHeaderHeight(context);
+    final titleStart = headerHeight - _kToolbarHeight + 20;
     const titleRangePx = 60.0;
     final titleFraction = ((offset - titleStart) / titleRangePx).clamp(
       0.0,
@@ -419,76 +420,146 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final chapter = widget.chapter;
-    final headerHeight = _headerHeight(context);
-    final overlayHeight = _overlayHeight ?? _kFallbackOverlayHeight;
-
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: headerHeight,
-            child: ChapterHeaderImage(chapterId: chapter.number),
-          ),
-          SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  height: (headerHeight - overlayHeight).clamp(0, headerHeight),
+      body: _isSideStory ? _buildSideStoryBody() : _buildMainThemeBody(),
+    );
+  }
+
+  Widget _buildMainThemeBody() {
+    final chapter = widget.chapter;
+    final headerHeight = _mainThemeHeaderHeight(context);
+
+    return Stack(
+      children: [
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: headerHeight,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ChapterHeaderImage(
+                  chapterId: chapter.number,
+                  category: widget.category,
                 ),
-                ChapterDetailHeader(
-                  key: _overlayKey,
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: ChapterDetailHeader(
                   chapter: chapter,
+                  category: widget.category,
                   description: _description,
                   descriptionLoaded: _descriptionLoaded,
                 ),
-                ChapterDetailBody(
-                  chapter: chapter,
-                  finished: _finished,
-                  downloadStates: _downloadStates,
-                  displayIndices: _displayIndices,
-                  finishedCount: _finishedCount,
-                  totalWordCount: _totalWordCount,
-                  computingWordCount: _computingWordCount,
-                  onMarkAllFinished: _markAllFinished,
-                  onClearAll: _clearAll,
-                  onToggleFinished: (index) {
-                    setState(() => _finished[index] = !_finished[index]);
-                    _saveFinishedProgress();
-                  },
-                  onDownloadTap: _toggleDownload,
-                  onOpenPart: (index) => _openPart(index),
+              ),
+            ],
+          ),
+        ),
+        SingleChildScrollView(
+          controller: _scrollController,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: headerHeight),
+              _buildBody(),
+            ],
+          ),
+        ),
+        ChapterDetailTopBar(
+          title: chapter.title,
+          collapseFraction: _collapseFraction,
+          titleFraction: _titleFraction,
+          onBack: () => Navigator.of(context).pop(),
+          onDownloadAll: _downloadAll,
+          onFilterTap: _openFilterSort,
+        ),
+        _buildContinueButton(),
+      ],
+    );
+  }
+
+  Widget _buildSideStoryBody() {
+    final chapter = widget.chapter;
+
+    return Stack(
+      children: [
+        Column(
+          children: [
+            ChapterDetailTopBar(
+              title: chapter.title,
+              collapseFraction: _collapseFraction,
+              titleFraction: _titleFraction,
+              onBack: () => Navigator.of(context).pop(),
+              onDownloadAll: _downloadAll,
+              onFilterTap: _openFilterSort,
+              solid: true,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 3.12,
+                      child: ChapterHeaderImage(
+                        chapterId: chapter.number,
+                        category: widget.category,
+                      ),
+                    ),
+                    ChapterDetailHeader(
+                      chapter: chapter,
+                      category: widget.category,
+                      description: _description,
+                      descriptionLoaded: _descriptionLoaded,
+                    ),
+                    _buildBody(),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-          ChapterDetailTopBar(
-            title: chapter.title,
-            collapseFraction: _collapseFraction,
-            titleFraction: _titleFraction,
-            onBack: () => Navigator.of(context).pop(),
-            onDownloadAll: _downloadAll,
-            onFilterTap: _openFilterSort,
-          ),
-          Positioned(
-            right: 20,
-            bottom: 20,
-            child: DetailActionButton(
-              label: 'CONTINUE',
-              icon: Icons.play_arrow,
-              filled: true,
-              large: true,
-              onPressed: _continueReading,
-            ),
-          ),
-        ],
+          ],
+        ),
+        _buildContinueButton(),
+      ],
+    );
+  }
+
+  Widget _buildContinueButton() {
+    return Positioned(
+      right: 20,
+      bottom: 20,
+      child: DetailActionButton(
+        label: 'CONTINUE',
+        icon: Icons.play_arrow,
+        filled: true,
+        large: true,
+        onPressed: _continueReading,
       ),
+    );
+  }
+
+  Widget _buildBody() {
+    return ChapterDetailBody(
+      chapter: widget.chapter,
+      finished: _finished,
+      downloadStates: _downloadStates,
+      displayIndices: _displayIndices,
+      finishedCount: _finishedCount,
+      totalWordCount: _totalWordCount,
+      computingWordCount: _computingWordCount,
+      onMarkAllFinished: _markAllFinished,
+      onClearAll: _clearAll,
+      onToggleFinished: (index) {
+        setState(() => _finished[index] = !_finished[index]);
+        _saveFinishedProgress();
+      },
+      onDownloadTap: _toggleDownload,
+      onOpenPart: (index) => _openPart(index),
     );
   }
 }
