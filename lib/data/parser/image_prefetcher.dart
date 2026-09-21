@@ -50,11 +50,13 @@ class ImagePrefetcher {
   static Future<PrefetchResult> prefetch({
     required List<StoryElement> elements,
     required String partFilename,
+    void Function(int done, int total)? onProgress,
   }) async {
     final refs = collectRefs(elements);
 
     if (refs.isEmpty) {
       await DownloadStore.saveImageManifest(partFilename, const []);
+      onProgress?.call(0, 0);
       return const PrefetchResult(
         totalAssets: 0,
         alreadyCached: 0,
@@ -64,21 +66,26 @@ class ImagePrefetcher {
 
     final failed = <String>[];
     var cachedCount = 0;
+    var done = 0;
+
+    onProgress?.call(0, refs.length);
 
     for (final ref in refs) {
       final already = await ImageCacheStore.isCached(ref.cacheKey);
       if (already) {
         cachedCount++;
-        continue;
+      } else {
+        try {
+          final Uint8List bytes = await ImageDataSource.fetchWithFallback(
+            ref.urls,
+          );
+          await ImageCacheStore.saveImage(ref.cacheKey, bytes);
+        } catch (_) {
+          failed.add(ref.cacheKey);
+        }
       }
-      try {
-        final Uint8List bytes = await ImageDataSource.fetchWithFallback(
-          ref.urls,
-        );
-        await ImageCacheStore.saveImage(ref.cacheKey, bytes);
-      } catch (_) {
-        failed.add(ref.cacheKey);
-      }
+      done++;
+      onProgress?.call(done, refs.length);
     }
 
     final cacheKeys = refs.map((r) => r.cacheKey).toList();

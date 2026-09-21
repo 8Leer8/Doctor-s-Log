@@ -9,6 +9,7 @@ class ChapterDetailBody extends StatelessWidget {
   final ChapterPreview chapter;
   final List<bool> finished;
   final Map<int, DownloadState> downloadStates;
+  final Map<int, double> downloadProgress;
   final List<int> displayIndices;
   final int finishedCount;
   final int? totalWordCount;
@@ -25,6 +26,7 @@ class ChapterDetailBody extends StatelessWidget {
     required this.chapter,
     required this.finished,
     required this.downloadStates,
+    required this.downloadProgress,
     required this.displayIndices,
     required this.finishedCount,
     required this.totalWordCount,
@@ -82,7 +84,10 @@ class ChapterDetailBody extends StatelessWidget {
                 computingWordCount
                     ? 'Calculating...'
                     : '${totalWordCount ?? 0} words · about ${WordCountEstimator.estimateMinutes(totalWordCount ?? 0)}m',
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
               ),
               Text(
                 '$finishedCount OF $total FINISHED',
@@ -107,10 +112,14 @@ class ChapterDetailBody extends StatelessWidget {
           const SizedBox(height: 4),
           ...displayIndices.map((index) {
             final part = chapter.parts[index];
+            final state = downloadStates[index] ?? DownloadState.notDownloaded;
             return DetailPartRow(
               part: part,
               finished: finished[index],
-              downloadState: downloadStates[index] ?? DownloadState.notDownloaded,
+              downloadState: state,
+              downloadProgress: state == DownloadState.downloading
+                  ? downloadProgress[index]
+                  : null,
               onToggleFinished: () => onToggleFinished(index),
               onDownloadTap: () => onDownloadTap(index),
               onOpen: () => onOpenPart(index),

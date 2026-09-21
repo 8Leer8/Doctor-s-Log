@@ -14,13 +14,17 @@ class StoryDataSource {
   static const String _fallbackBase =
       'https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData_YoStar@main/en_US/gamedata/story';
 
-  Future<String> fetchRawStory(String relativePath) async {
+  Future<String> fetchRawStory(
+    String relativePath, {
+    void Function(int received, int total)? onProgress,
+  }) async {
     final primary = '$_primaryBase/$relativePath';
 
     try {
       final response = await _dio.get<String>(
         primary,
         options: Options(responseType: ResponseType.plain),
+        onReceiveProgress: onProgress,
       );
       final data = response.data ?? '';
       if (data.trim().isNotEmpty) return data;
@@ -32,6 +36,7 @@ class StoryDataSource {
     final response = await _dio.get<String>(
       fallback,
       options: Options(responseType: ResponseType.plain),
+      onReceiveProgress: onProgress,
     );
 
     final data = response.data ?? '';

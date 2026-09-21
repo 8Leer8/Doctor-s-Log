@@ -41,6 +41,7 @@ class ChapterDetailScreen extends StatefulWidget {
 class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   List<bool> _finished = [];
   final Map<int, DownloadState> _downloadStates = {};
+  final Map<int, double> _downloadProgress = {};
   final _scrollController = ScrollController();
 
   final _dataSource = StoryDataSource();
@@ -171,7 +172,11 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
     if (currentState == DownloadState.downloading) return;
 
-    setState(() => _downloadStates[index] = DownloadState.downloading);
+    setState(() {
+      _downloadStates[index] = DownloadState.downloading;
+      _downloadProgress.remove(index);
+    });
+
     try {
       final content = await _dataSource.fetchRawStory(filename);
 
@@ -198,13 +203,23 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         prefetchResult = await ImagePrefetcher.prefetch(
           elements: elements,
           partFilename: filename,
+          onProgress: (done, total) {
+            if (!mounted) return;
+            if (total <= 0) return;
+            setState(() {
+              _downloadProgress[index] = done / total;
+            });
+          },
         );
       } catch (_) {
         prefetchResult = null;
       }
 
       if (mounted) {
-        setState(() => _downloadStates[index] = DownloadState.downloaded);
+        setState(() {
+          _downloadStates[index] = DownloadState.downloaded;
+          _downloadProgress.remove(index);
+        });
 
         if (prefetchResult != null && prefetchResult.failedIds.isNotEmpty) {
           AppToast.show(
@@ -224,7 +239,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _downloadStates[index] = DownloadState.notDownloaded);
+      setState(() {
+        _downloadStates[index] = DownloadState.notDownloaded;
+        _downloadProgress.remove(index);
+      });
 
       if (_isNetworkError(e)) {
         AppToast.noInternet(context);
@@ -235,10 +253,20 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   }
 
   Future<void> _downloadAll() async {
-    for (int i = 0; i < widget.chapter.parts.length; i++) {
-      if (_downloadStates[i] == DownloadState.notDownloaded) {
-        await _toggleDownload(i);
+    final queue = <int>[];
+    setState(() {
+      for (int i = 0; i < widget.chapter.parts.length; i++) {
+        if (widget.chapter.parts[i].filename == null) continue;
+        final state = _downloadStates[i] ?? DownloadState.notDownloaded;
+        if (state == DownloadState.notDownloaded) {
+          _downloadStates[i] = DownloadState.queued;
+          queue.add(i);
+        }
       }
+    });
+
+    for (final i in queue) {
+      await _toggleDownload(i);
     }
   }
 
@@ -548,6 +576,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       chapter: widget.chapter,
       finished: _finished,
       downloadStates: _downloadStates,
+      downloadProgress: _downloadProgress,
       displayIndices: _displayIndices,
       finishedCount: _finishedCount,
       totalWordCount: _totalWordCount,
