@@ -8,20 +8,35 @@ class StoryDataSource {
     ),
   );
 
-  static const String _base =
+  static const String _primaryBase =
       'https://cdn.jsdelivr.net/gh/ArknightsAssets/ArknightsGamedata@master/en/gamedata/story';
 
-  /// [relativePath] is the full path under /story/, e.g.
-  /// 'obt/main/level_main_00-01_beg.txt' or 'obt/guide/beg/0_welcome_to_guide.txt'
+  static const String _fallbackBase =
+      'https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData_YoStar@main/en_US/gamedata/story';
+
   Future<String> fetchRawStory(String relativePath) async {
+    final primary = '$_primaryBase/$relativePath';
+
+    try {
+      final response = await _dio.get<String>(
+        primary,
+        options: Options(responseType: ResponseType.plain),
+      );
+      final data = response.data ?? '';
+      if (data.trim().isNotEmpty) return data;
+    } catch (_) {
+      // fall through to fallback
+    }
+
+    final fallback = '$_fallbackBase/$relativePath';
     final response = await _dio.get<String>(
-      '$_base/$relativePath',
+      fallback,
       options: Options(responseType: ResponseType.plain),
     );
 
     final data = response.data ?? '';
     if (data.trim().isEmpty) {
-      throw Exception('Empty response for $relativePath');
+      throw Exception('Empty response for $relativePath (both sources)');
     }
     return data;
   }

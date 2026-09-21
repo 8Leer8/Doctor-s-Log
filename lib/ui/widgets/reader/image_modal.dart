@@ -221,7 +221,7 @@ class _ImageModalState extends State<ImageModal> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 40),
             child: Text(
-              'We do not have an image for this character.',
+              'We do not have an image for this character at this moment.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white38, fontSize: 12),
             ),
