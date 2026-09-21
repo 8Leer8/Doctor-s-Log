@@ -1,0 +1,1 @@
+enum StoryCategory { mainTheme, sideStory }

@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../models/story_category.dart';
 
 class ChapterHeaderImage extends StatelessWidget {
   final String chapterId;
+  final StoryCategory category;
 
-  const ChapterHeaderImage({super.key, required this.chapterId});
+  const ChapterHeaderImage({
+    super.key,
+    required this.chapterId,
+    required this.category,
+  });
+
+  String get _folder => switch (category) {
+    StoryCategory.mainTheme => 'chapters',
+    StoryCategory.sideStory => 'side_stories',
+  };
 
   Widget _buildImage() {
     return Image.asset(
-      'assets/images/chapters/$chapterId.jpg',
+      'assets/images/$_folder/$chapterId.jpg',
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) => Image.asset(
-        'assets/images/chapters/$chapterId.png',
+        'assets/images/$_folder/$chapterId.png',
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => Container(
           color: AppColors.surfaceRaised,
@@ -29,6 +40,10 @@ class ChapterHeaderImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (category == StoryCategory.sideStory) {
+      return _buildImage();
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -38,11 +53,7 @@ class ChapterHeaderImage extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Colors.black54, // strongest at the very top
-                Colors.black26, // softening
-                Colors.transparent,
-              ],
+              colors: [Colors.black54, Colors.black26, Colors.transparent],
               stops: [0.0, 0.08, 0.18],
             ),
           ),
