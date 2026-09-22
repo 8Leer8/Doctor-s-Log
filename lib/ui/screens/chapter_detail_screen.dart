@@ -8,6 +8,7 @@ import '../../data/remote/story_data_source.dart';
 import '../../data/parser/word_count_estimator.dart';
 import '../../data/parser/story_parser.dart';
 import '../../data/parser/image_prefetcher.dart';
+import '../../data/local/bookmark_store.dart';
 import '../../data/local/chapter_descriptions_loader.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../../data/local/download_store.dart';
@@ -21,6 +22,9 @@ import '../widgets/chapter_detail/chapter_detail_top_bar.dart';
 import '../widgets/chapter_detail/chapter_header_image.dart';
 import '../widgets/chapter_detail/part_filter_sort_sheet.dart';
 import '../widgets/chapter_detail/detail_part_row.dart';
+import '../widgets/chapter_detail/selection_actions.dart';
+import '../widgets/chapter_detail/selection_bottom_bar.dart';
+import '../widgets/chapter_detail/selection_top_bar.dart';
 
 const double _kToolbarHeight = 64;
 
@@ -57,6 +61,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   PartFilterMode _filterMode = PartFilterMode.all;
   PartSortOrder _sortOrder = PartSortOrder.ascending;
 
+  bool _selectionMode = false;
+  final Set<int> _selectedIndices = {};
+  Set<String> _bookmarkedFilenames = {};
+
   bool get _isSideStory => widget.category == StoryCategory.sideStory;
 
   @override
@@ -68,6 +76,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
     _loadFinishedProgress();
     _loadDownloadStates();
+    _loadBookmarks();
     _computeWordCount();
     _loadDescription();
     _scrollController.addListener(_onScroll);
@@ -112,6 +121,12 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         setState(() => _downloadStates[i] = DownloadState.downloaded);
       }
     }
+  }
+
+  Future<void> _loadBookmarks() async {
+    final bookmarks = await BookmarkStore.getBookmarks(widget.chapter.number);
+    if (!mounted) return;
+    setState(() => _bookmarkedFilenames = bookmarks);
   }
 
   Future<void> _loadDescription() async {
@@ -424,6 +439,200 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     );
   }
 
+  void _enterSelection(int index) {
+    setState(() {
+      _selectionMode = true;
+      _selectedIndices.add(index);
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      _selectionMode = false;
+      _selectedIndices.clear();
+    });
+  }
+
+  void _toggleSelected(int index) {
+    setState(() {
+      if (_selectedIndices.contains(index)) {
+        _selectedIndices.remove(index);
+        if (_selectedIndices.isEmpty) _selectionMode = false;
+      } else {
+        _selectedIndices.add(index);
+      }
+    });
+  }
+
+  void _selectAll() {
+    final all = List<int>.generate(widget.chapter.parts.length, (i) => i);
+    setState(() {
+      if (_selectedIndices.length == all.length) {
+        _selectedIndices.clear();
+        _selectionMode = false;
+      } else {
+        _selectedIndices
+          ..clear()
+          ..addAll(all);
+      }
+    });
+  }
+
+  void _invertSelection() {
+    final all = List<int>.generate(widget.chapter.parts.length, (i) => i);
+    setState(() {
+      final newSet = <int>{};
+      for (final i in all) {
+        if (!_selectedIndices.contains(i)) newSet.add(i);
+      }
+      _selectedIndices
+        ..clear()
+        ..addAll(newSet);
+      if (_selectedIndices.isEmpty) _selectionMode = false;
+    });
+  }
+
+  Future<void> _bulkDownload() async {
+    final targets = _selectedIndices.where((i) {
+      final p = widget.chapter.parts[i];
+      if (p.filename == null) return false;
+      final state = _downloadStates[i] ?? DownloadState.notDownloaded;
+      return state == DownloadState.notDownloaded;
+    }).toList();
+    _exitSelection();
+
+    setState(() {
+      for (final i in targets) {
+        _downloadStates[i] = DownloadState.queued;
+      }
+    });
+
+    for (final i in targets) {
+      await _toggleDownload(i);
+    }
+  }
+
+  Future<void> _bulkDelete() async {
+    final targets = _selectedIndices.toList();
+
+    final confirmed = await _confirmBulkDelete(targets.length);
+    if (confirmed != true || !mounted) return;
+
+    for (final i in targets) {
+      final filename = widget.chapter.parts[i].filename;
+      if (filename == null) continue;
+      try {
+        await ImagePrefetcher.releaseImagesForPart(filename);
+        await DownloadStore.deleteContent(filename);
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      setState(() {
+        for (final i in targets) {
+          _downloadStates[i] = DownloadState.notDownloaded;
+          _downloadProgress.remove(i);
+        }
+      });
+      _exitSelection();
+    }
+  }
+
+  Future<void> _bulkBookmark() async {
+    final filenames = <String>[];
+    for (final i in _selectedIndices) {
+      final f = widget.chapter.parts[i].filename;
+      if (f != null) filenames.add(f);
+    }
+
+    if (filenames.isEmpty) {
+      _exitSelection();
+      return;
+    }
+
+    final allBookmarked = filenames.every(
+      (f) => _bookmarkedFilenames.contains(f),
+    );
+    final newState = !allBookmarked;
+
+    await BookmarkStore.toggleMany(widget.chapter.number, filenames, newState);
+
+    if (mounted) {
+      setState(() {
+        if (newState) {
+          _bookmarkedFilenames.addAll(filenames);
+        } else {
+          _bookmarkedFilenames.removeAll(filenames);
+        }
+      });
+      _exitSelection();
+    }
+  }
+
+  bool _allSelectedBookmarked() {
+    if (_selectedIndices.isEmpty) return false;
+    for (final i in _selectedIndices) {
+      final f = widget.chapter.parts[i].filename;
+      if (f == null) continue;
+      if (!_bookmarkedFilenames.contains(f)) return false;
+    }
+    return true;
+  }
+
+  Future<bool?> _confirmBulkDelete(int count) {
+    return showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: const Text(
+          'Delete downloads?',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'This will remove the offline copies of $count part(s). You can re-download them anytime.',
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'CANCEL',
+              style: TextStyle(
+                color: AppColors.coldGray,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'DELETE',
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   int get _finishedCount => _finished.where((f) => f).length;
 
   List<int> get _displayIndices {
@@ -446,11 +655,36 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     return indices;
   }
 
+  List<SelectionAction> _currentActions() {
+    final isDownloaded = List<bool>.generate(
+      widget.chapter.parts.length,
+      (i) =>
+          (_downloadStates[i] ?? DownloadState.notDownloaded) ==
+          DownloadState.downloaded,
+    );
+    final hasFile = List<bool>.generate(
+      widget.chapter.parts.length,
+      (i) => widget.chapter.parts[i].filename != null,
+    );
+    return SelectionActions.forIndices(
+      selectedIndices: _selectedIndices,
+      isDownloaded: isDownloaded,
+      hasFile: hasFile,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: _isSideStory ? _buildSideStoryBody() : _buildMainThemeBody(),
+    return PopScope(
+      canPop: !_selectionMode,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _exitSelection();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: _isSideStory ? _buildSideStoryBody() : _buildMainThemeBody(),
+      ),
     );
   }
 
@@ -497,15 +731,43 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
             ],
           ),
         ),
-        ChapterDetailTopBar(
-          title: chapter.title,
-          collapseFraction: _collapseFraction,
-          titleFraction: _titleFraction,
-          onBack: () => Navigator.of(context).pop(),
-          onDownloadAll: _downloadAll,
-          onFilterTap: _openFilterSort,
-        ),
-        _buildContinueButton(),
+        if (_selectionMode)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SelectionTopBar(
+              selectedCount: _selectedIndices.length,
+              allSelected:
+                  _selectedIndices.length == widget.chapter.parts.length,
+              onClose: _exitSelection,
+              onSelectAll: _selectAll,
+              onInvert: _invertSelection,
+            ),
+          )
+        else
+          ChapterDetailTopBar(
+            title: chapter.title,
+            collapseFraction: _collapseFraction,
+            titleFraction: _titleFraction,
+            onBack: () => Navigator.of(context).pop(),
+            onDownloadAll: _downloadAll,
+            onFilterTap: _openFilterSort,
+          ),
+        if (!_selectionMode) _buildContinueButton(),
+        if (_selectionMode)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SelectionBottomBar(
+              actions: _currentActions(),
+              allBookmarked: _allSelectedBookmarked(),
+              onDownload: _bulkDownload,
+              onDelete: _bulkDelete,
+              onBookmark: _bulkBookmark,
+            ),
+          ),
       ],
     );
   }
@@ -517,15 +779,25 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       children: [
         Column(
           children: [
-            ChapterDetailTopBar(
-              title: chapter.title,
-              collapseFraction: _collapseFraction,
-              titleFraction: _titleFraction,
-              onBack: () => Navigator.of(context).pop(),
-              onDownloadAll: _downloadAll,
-              onFilterTap: _openFilterSort,
-              solid: true,
-            ),
+            if (_selectionMode)
+              SelectionTopBar(
+                selectedCount: _selectedIndices.length,
+                allSelected:
+                    _selectedIndices.length == widget.chapter.parts.length,
+                onClose: _exitSelection,
+                onSelectAll: _selectAll,
+                onInvert: _invertSelection,
+              )
+            else
+              ChapterDetailTopBar(
+                title: chapter.title,
+                collapseFraction: _collapseFraction,
+                titleFraction: _titleFraction,
+                onBack: () => Navigator.of(context).pop(),
+                onDownloadAll: _downloadAll,
+                onFilterTap: _openFilterSort,
+                solid: true,
+              ),
             Expanded(
               child: SingleChildScrollView(
                 controller: _scrollController,
@@ -552,7 +824,20 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
             ),
           ],
         ),
-        _buildContinueButton(),
+        if (!_selectionMode) _buildContinueButton(),
+        if (_selectionMode)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SelectionBottomBar(
+              actions: _currentActions(),
+              allBookmarked: _allSelectedBookmarked(),
+              onDownload: _bulkDownload,
+              onDelete: _bulkDelete,
+              onBookmark: _bulkBookmark,
+            ),
+          ),
       ],
     );
   }
@@ -581,14 +866,20 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       finishedCount: _finishedCount,
       totalWordCount: _totalWordCount,
       computingWordCount: _computingWordCount,
+      selectionMode: _selectionMode,
+      selectedIndices: _selectedIndices,
+      bookmarkedFilenames: _bookmarkedFilenames,
       onMarkAllFinished: _markAllFinished,
       onClearAll: _clearAll,
-      onToggleFinished: (index) {
-        setState(() => _finished[index] = !_finished[index]);
-        _saveFinishedProgress();
-      },
       onDownloadTap: _toggleDownload,
       onOpenPart: (index) => _openPart(index),
+      onLongPressPart: (index) {
+        if (_selectionMode) {
+          _toggleSelected(index);
+        } else {
+          _enterSelection(index);
+        }
+      },
     );
   }
 }

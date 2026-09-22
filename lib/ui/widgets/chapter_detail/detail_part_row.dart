@@ -13,84 +13,111 @@ class DetailPartRow extends StatelessWidget {
   /// indeterminate. Ignored when downloadState isn't [downloading].
   final double? downloadProgress;
 
-  final VoidCallback onToggleFinished;
+  /// True while the parent screen is in multi-select mode.
+  final bool selectionMode;
+
+  /// True when this row is part of the current multi-selection.
+  final bool selected;
+
+  /// True when the user has bookmarked this part.
+  final bool bookmarked;
+
   final VoidCallback onDownloadTap;
   final VoidCallback onOpen;
+  final VoidCallback onLongPress;
 
   const DetailPartRow({
     super.key,
     required this.part,
     required this.finished,
     required this.downloadState,
-    required this.onToggleFinished,
     required this.onDownloadTap,
     required this.onOpen,
+    required this.onLongPress,
     this.downloadProgress,
+    this.selectionMode = false,
+    this.selected = false,
+    this.bookmarked = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onOpen,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-        ),
-        child: Opacity(
-          opacity: finished ? 0.55 : 1.0,
-          child: Row(
+      onTap: selectionMode ? onLongPress : onOpen,
+      onLongPress: onLongPress,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        color: selected
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.transparent,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              GestureDetector(
-                onTap: onToggleFinished,
-                child: Icon(
-                  finished ? Icons.check_circle : Icons.circle_outlined,
-                  size: 22,
-                  color: finished ? Colors.green.shade400 : AppColors.coldGray,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Opacity(
+                opacity: finished ? 0.55 : 1.0,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      part.title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
+                    if (bookmarked) ...[
+                      const Icon(
+                        Icons.bookmark,
+                        size: 16,
+                        color: AppColors.amber,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            part.title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textPrimary,
+                              height: 1.3,
+                            ),
+                          ),
+                          if (part.releaseDate != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                _formatDate(part.releaseDate!),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.coldGray,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (part.releaseDate != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          _formatDate(part.releaseDate!),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.coldGray,
-                          ),
+                    if (part.filename == null)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: Icon(
+                          Icons.cloud_off,
+                          size: 14,
+                          color: AppColors.coldGray,
                         ),
                       ),
+                    GestureDetector(
+                      onTap: part.filename == null ? null : onDownloadTap,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 12),
+                        child: _buildDownloadIcon(),
+                      ),
+                    ),
                   ],
                 ),
               ),
-              if (part.filename == null)
-                const Padding(
-                  padding: EdgeInsets.only(right: 12),
-                  child: Icon(
-                    Icons.cloud_off,
-                    size: 14,
-                    color: AppColors.coldGray,
-                  ),
-                ),
-              GestureDetector(
-                onTap: part.filename == null ? null : onDownloadTap,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: _buildDownloadIcon(),
-                ),
-              ),
+              const SizedBox(height: 14),
+              Container(height: 1, color: AppColors.border),
             ],
           ),
         ),
@@ -115,9 +142,6 @@ class DetailPartRow extends StatelessWidget {
             ),
           );
         }
-        // Clamp the displayed value so the ring never reaches 1.0
-        // while still downloading. That avoids the "full ring for one
-        // frame then it disappears" flash.
         final displayPct = pct.clamp(0.0, 0.99);
         return SizedBox(
           width: 26,
