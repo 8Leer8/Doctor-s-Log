@@ -15,7 +15,7 @@ import '../../data/local/download_store.dart';
 import '../../utils/chapter_detail_dialogs.dart';
 import '../widgets/common/app_toast.dart';
 import 'reader_screen.dart';
-import '../widgets/chapter_detail/detail_action_button.dart';
+import '../widgets/chapter_detail/continue_button.dart';
 import '../widgets/chapter_detail/chapter_detail_header.dart';
 import '../widgets/chapter_detail/chapter_detail_body.dart';
 import '../widgets/chapter_detail/chapter_detail_top_bar.dart';
@@ -64,6 +64,11 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   bool _selectionMode = false;
   final Set<int> _selectedIndices = {};
   Set<String> _bookmarkedFilenames = {};
+
+  bool _continueButtonCollapsed = false;
+  double _lastScrollOffset = 0.0;
+
+  static const double _kScrollDirectionThreshold = 20.0;
 
   bool get _isSideStory => widget.category == StoryCategory.sideStory;
 
@@ -293,6 +298,28 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   void _onScroll() {
     final offset = _scrollController.offset;
+    final position = _scrollController.position;
+
+    final atBottom = position.pixels >= position.maxScrollExtent - 40;
+
+    final delta = offset - _lastScrollOffset;
+    bool shouldCollapse = _continueButtonCollapsed;
+
+    if (atBottom) {
+      shouldCollapse = false;
+    } else if (delta > _kScrollDirectionThreshold) {
+      shouldCollapse = true;
+    } else if (delta < -_kScrollDirectionThreshold) {
+      shouldCollapse = false;
+    }
+
+    if (delta.abs() > _kScrollDirectionThreshold) {
+      _lastScrollOffset = offset;
+    }
+
+    if (shouldCollapse != _continueButtonCollapsed) {
+      setState(() => _continueButtonCollapsed = shouldCollapse);
+    }
 
     const fillRangePx = 40.0;
     final fillFraction = (offset / fillRangePx).clamp(0.0, 1.0);
@@ -844,14 +871,11 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   Widget _buildContinueButton() {
     return Positioned(
-      right: 20,
-      bottom: 20,
-      child: DetailActionButton(
-        label: 'CONTINUE',
-        icon: Icons.play_arrow,
-        filled: true,
-        large: true,
+      right: 16,
+      bottom: 16,
+      child: ContinueButton(
         onPressed: _continueReading,
+        collapsed: _continueButtonCollapsed,
       ),
     );
   }

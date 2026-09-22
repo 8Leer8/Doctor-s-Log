@@ -144,7 +144,7 @@ class ChapterDetailBody extends StatelessWidget {
               onLongPress: () => onLongPressPart(index),
             );
           }),
-          const SizedBox(height: 100),
+          const SizedBox(height: 90),
         ],
       ),
     );
