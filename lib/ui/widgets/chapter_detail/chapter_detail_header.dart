@@ -41,7 +41,7 @@ class ChapterDetailHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: AppColors.background,
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
       child: _buildContent(formattedType, onImage: false),
     );
   }
@@ -84,6 +84,7 @@ class ChapterDetailHeader extends StatelessWidget {
           descriptionLoaded && description != null
               ? description!
               : (descriptionLoaded ? 'No description available.' : ''),
+          textAlign: TextAlign.justify,
           style: TextStyle(
             fontSize: 13,
             height: 1.45,

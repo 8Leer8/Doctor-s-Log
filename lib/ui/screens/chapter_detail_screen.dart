@@ -15,6 +15,7 @@ import '../../data/local/download_store.dart';
 import '../../utils/chapter_detail_dialogs.dart';
 import '../widgets/common/app_toast.dart';
 import 'reader_screen.dart';
+import '../widgets/reader/image_modal.dart';
 import '../widgets/chapter_detail/continue_button.dart';
 import '../widgets/chapter_detail/chapter_detail_header.dart';
 import '../widgets/chapter_detail/chapter_detail_body.dart';
@@ -169,6 +170,20 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         s.contains('connection error') ||
         s.contains('connectionerror') ||
         s.contains('no address associated');
+  }
+
+  Future<void> _openBannerModal() async {
+    final folder = _isSideStory ? 'side_stories' : 'chapters';
+    final assetPath = 'assets/images/$folder/${widget.chapter.number}.jpg';
+
+    await ImageModal.show(
+      context,
+      urls: const [],
+      cacheKey: 'banner:${widget.chapter.number}',
+      title: widget.chapter.title,
+      assetPath: assetPath,
+      placeholderMessage: 'Cover unavailable',
+    );
   }
 
   Future<void> _toggleDownload(int index) async {
@@ -718,6 +733,11 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   Widget _buildMainThemeBody() {
     final chapter = widget.chapter;
     final headerHeight = _mainThemeHeaderHeight(context);
+    final topBarHeight = MediaQuery.of(context).padding.top + 64;
+    final tapAreaHeight = (headerHeight - topBarHeight - 160).clamp(
+      0.0,
+      double.infinity,
+    );
 
     return Stack(
       children: [
@@ -758,6 +778,18 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
             ],
           ),
         ),
+        if (!_selectionMode && tapAreaHeight > 0)
+          Positioned(
+            top: topBarHeight,
+            left: 0,
+            right: 0,
+            height: tapAreaHeight,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _openBannerModal,
+              child: const SizedBox.expand(),
+            ),
+          ),
         if (_selectionMode)
           Positioned(
             top: 0,
@@ -833,9 +865,12 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
                   children: [
                     AspectRatio(
                       aspectRatio: 3.12,
-                      child: ChapterHeaderImage(
-                        chapterId: chapter.number,
-                        category: widget.category,
+                      child: GestureDetector(
+                        onTap: _openBannerModal,
+                        child: ChapterHeaderImage(
+                          chapterId: chapter.number,
+                          category: widget.category,
+                        ),
                       ),
                     ),
                     ChapterDetailHeader(

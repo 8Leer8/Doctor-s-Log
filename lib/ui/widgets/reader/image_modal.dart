@@ -9,6 +9,8 @@ class ImageModal extends StatefulWidget {
   final String cacheKey;
   final String title;
   final String? placeholderInitials;
+  final String? placeholderMessage;
+  final String? assetPath;
 
   const ImageModal({
     super.key,
@@ -16,6 +18,8 @@ class ImageModal extends StatefulWidget {
     required this.cacheKey,
     required this.title,
     this.placeholderInitials,
+    this.placeholderMessage,
+    this.assetPath,
   });
 
   static Future<void> show(
@@ -24,6 +28,8 @@ class ImageModal extends StatefulWidget {
     required String cacheKey,
     required String title,
     String? placeholderInitials,
+    String? placeholderMessage,
+    String? assetPath,
   }) {
     return showDialog<void>(
       context: context,
@@ -35,6 +41,8 @@ class ImageModal extends StatefulWidget {
         cacheKey: cacheKey,
         title: title,
         placeholderInitials: placeholderInitials,
+        placeholderMessage: placeholderMessage,
+        assetPath: assetPath,
       ),
     );
   }
@@ -54,7 +62,11 @@ class _ImageModalState extends State<ImageModal> {
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.assetPath != null) {
+      _loading = false;
+    } else {
+      _load();
+    }
   }
 
   @override
@@ -136,20 +148,29 @@ class _ImageModalState extends State<ImageModal> {
             ),
           ),
           Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
-          Positioned(
-            top: 12,
-            right: 12,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 26),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
         ],
       ),
     );
   }
 
   Widget _buildContent() {
+    if (widget.assetPath != null) {
+      return InteractiveViewer(
+        transformationController: _transformController,
+        minScale: 1.0,
+        maxScale: 5.0,
+        panEnabled: true,
+        scaleEnabled: true,
+        child: Center(
+          child: Image.asset(
+            widget.assetPath!,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+          ),
+        ),
+      );
+    }
+
     if (_loading) {
       return const Center(
         child: CircularProgressIndicator(color: AppColors.amber),
@@ -202,28 +223,30 @@ class _ImageModalState extends State<ImageModal> {
                       ),
                     )
                   : const Icon(
-                      Icons.person_outline,
+                      Icons.image_not_supported_outlined,
                       color: Colors.white54,
-                      size: 48,
+                      size: 44,
                     ),
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Portrait unavailable',
-            style: TextStyle(
+          Text(
+            widget.placeholderMessage ?? 'Image unavailable',
+            style: const TextStyle(
               color: Colors.white70,
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 6),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 40),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
             child: Text(
-              'We do not have an image for this character at this moment.',
+              widget.assetPath != null
+                  ? 'This image could not be found.'
+                  : 'We do not have an image for this.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white38, fontSize: 12),
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
           ),
         ],
@@ -233,7 +256,7 @@ class _ImageModalState extends State<ImageModal> {
 
   Widget _buildTopBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 64, 16),
+      padding: const EdgeInsets.fromLTRB(20, 12, 4, 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -241,15 +264,25 @@ class _ImageModalState extends State<ImageModal> {
           colors: [Colors.black.withValues(alpha: 0.65), Colors.transparent],
         ),
       ),
-      child: Text(
-        widget.title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-        ),
-        overflow: TextOverflow.ellipsis,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              widget.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white, size: 26),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
       ),
     );
   }
