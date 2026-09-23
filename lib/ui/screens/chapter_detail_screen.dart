@@ -186,6 +186,38 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     );
   }
 
+  // Single-row toggle triggered by swipe. Persists immediately.
+  Future<void> _toggleFinishedForRow(int index) async {
+    if (index < 0 || index >= _finished.length) return;
+    setState(() => _finished[index] = !_finished[index]);
+    await _saveFinishedProgress();
+  }
+
+  // Single-row bookmark toggle triggered by swipe. Persists immediately.
+  Future<void> _toggleBookmarkForRow(int index) async {
+    if (index < 0 || index >= widget.chapter.parts.length) return;
+    final filename = widget.chapter.parts[index].filename;
+    if (filename == null) return;
+
+    final isCurrentlyBookmarked = _bookmarkedFilenames.contains(filename);
+    final newState = !isCurrentlyBookmarked;
+
+    await BookmarkStore.toggleBookmark(
+      widget.chapter.number,
+      filename,
+      newState,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      if (newState) {
+        _bookmarkedFilenames.add(filename);
+      } else {
+        _bookmarkedFilenames.remove(filename);
+      }
+    });
+  }
+
   Future<void> _toggleDownload(int index) async {
     final filename = widget.chapter.parts[index].filename;
     if (filename == null) return;
@@ -939,6 +971,8 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
           _enterSelection(index);
         }
       },
+      onSwipeFinished: _toggleFinishedForRow,
+      onSwipeBookmark: _toggleBookmarkForRow,
     );
   }
 }

@@ -24,6 +24,8 @@ class ChapterDetailBody extends StatelessWidget {
   final ValueChanged<int> onDownloadTap;
   final ValueChanged<int> onOpenPart;
   final ValueChanged<int> onLongPressPart;
+  final ValueChanged<int> onSwipeFinished;
+  final ValueChanged<int> onSwipeBookmark;
 
   const ChapterDetailBody({
     super.key,
@@ -43,6 +45,8 @@ class ChapterDetailBody extends StatelessWidget {
     required this.onDownloadTap,
     required this.onOpenPart,
     required this.onLongPressPart,
+    required this.onSwipeFinished,
+    required this.onSwipeBookmark,
   });
 
   @override
@@ -142,6 +146,8 @@ class ChapterDetailBody extends StatelessWidget {
               onDownloadTap: () => onDownloadTap(index),
               onOpen: () => onOpenPart(index),
               onLongPress: () => onLongPressPart(index),
+              onSwipeFinished: () => onSwipeFinished(index),
+              onSwipeBookmark: () => onSwipeBookmark(index),
             );
           }),
           const SizedBox(height: 90),
