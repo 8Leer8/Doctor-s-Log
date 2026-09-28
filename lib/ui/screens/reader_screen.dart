@@ -18,6 +18,7 @@ import '../widgets/reader/reader_bottom_bar.dart';
 import '../widgets/reader/reader_settings_sheet.dart';
 import '../widgets/reader/reader_toc_sheet.dart';
 import '../widgets/common/app_toast.dart';
+import '../../data/local/character_sprite_map_store.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String chapterId;
@@ -90,6 +91,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    CharacterSpriteMapStore.load();
     _currentPartIndexInList = widget.startAt;
     _frontierPartIndexInList = widget.startAt;
     _itemPositionsListener.itemPositions.addListener(_onPositionsChanged);

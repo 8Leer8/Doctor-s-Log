@@ -73,6 +73,7 @@ flutter:
     - assets/images/chapters/
     - assets/data/chapter_descriptions.json
     - assets/images/side_stories/
+    - assets/data/character_sprites.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

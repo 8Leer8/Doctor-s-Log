@@ -142,7 +142,7 @@ class ReaderItemBuilder {
         onSpeakerTap: () => ImageModal.show(
           context,
           urls: const [],
-          cacheKey: 'placeholder:${speaker.hashCode}',
+          cacheKey: 'placeholder:$chapterTitle:$speaker',
           title: speaker,
           placeholderInitials: _initialsFor(speaker),
         ),

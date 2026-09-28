@@ -1,4 +1,5 @@
 import '../../models/story_element.dart';
+import '../local/character_sprite_map_store.dart';
 
 class StoryParser {
   static final RegExp _speakerLineRegex = RegExp(
@@ -20,6 +21,14 @@ class StoryParser {
   static final RegExp _subtitleRegex = RegExp(
     r'^\[Subtitle\([^\]]*text\s*=\s*"((?:[^"\\]|\\.)*)"',
   );
+  static final RegExp _characterNameRegex = RegExp(r'''name\s*=\s*"([^"]*)"''');
+  static final RegExp _characterName2Regex = RegExp(
+    r'''name2\s*=\s*"([^"]*)"''',
+  );
+  static final RegExp _characterTagRegex = RegExp(
+    r'^\[character(?:\(|\])',
+    caseSensitive: false,
+  );
   static final RegExp _charslotRegex = RegExp(
     r'^\[charslot\([^\]]*name\s*=\s*"([^"]*)"',
   );
@@ -33,12 +42,53 @@ class StoryParser {
     r'<p=\d+>(.*?)</p?>',
     dotAll: true,
   );
+  static final RegExp _nameTokenRegex = RegExp(
+    r'^(?:char|avg)_\d+_([a-z0-9]+)',
+    caseSensitive: false,
+  );
+
+  static Future<void> ensureSpriteMapLoaded() async {
+    await CharacterSpriteMapStore.load();
+  }
 
   static String _unescapeText(String s) {
     return s
         .replaceAll(r'\n', '\n')
         .replaceAll(r'\"', '"')
         .replaceAll(r'\\', '\\');
+  }
+
+  static String? _extractNameToken(String spriteId) {
+    final m = _nameTokenRegex.firstMatch(spriteId.toLowerCase());
+    return m?.group(1);
+  }
+
+  static bool _matchesSpeaker(String spriteId, String speaker) {
+    final token = _extractNameToken(spriteId);
+    if (token == null || token.length < 4) return false;
+
+    final speakerNorm = speaker.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]'),
+      '',
+    );
+    if (speakerNorm.isEmpty) return false;
+
+    return speakerNorm.contains(token) || token.contains(speakerNorm);
+  }
+
+  static String? _resolvePortrait({
+    required String? speaker,
+    required String? primaryId,
+    required String? secondaryId,
+  }) {
+    if (speaker == null || speaker.trim().isEmpty) return null;
+    if (primaryId != null && _matchesSpeaker(primaryId, speaker)) {
+      return primaryId;
+    }
+    if (secondaryId != null && _matchesSpeaker(secondaryId, speaker)) {
+      return secondaryId;
+    }
+    return null;
   }
 
   static List<StoryElement> parse(String raw) {
@@ -50,7 +100,9 @@ class StoryParser {
 
     String? lastBackgroundImage;
     String? lastImageId;
-    String? currentPortraitId;
+
+    String? primarySpriteId;
+    String? secondarySpriteId;
 
     for (final rawLine in raw.split('\n')) {
       final line = rawLine.trimRight();
@@ -144,15 +196,42 @@ class StoryParser {
         continue;
       }
 
+      if (_characterTagRegex.hasMatch(trimmedLeft)) {
+        final nameMatch = _characterNameRegex.firstMatch(trimmedLeft);
+        final name2Match = _characterName2Regex.firstMatch(trimmedLeft);
+
+        if (nameMatch == null && name2Match == null) {
+          primarySpriteId = null;
+          secondarySpriteId = null;
+          continue;
+        }
+
+        if (nameMatch != null) {
+          final v = nameMatch.group(1) ?? '';
+          primarySpriteId = (v.isEmpty || v == 'char_empty') ? null : v;
+        }
+
+        if (name2Match != null) {
+          final v = name2Match.group(1) ?? '';
+          secondarySpriteId = (v.isEmpty || v == 'char_empty') ? null : v;
+        } else if (nameMatch != null) {
+          secondarySpriteId = null;
+        }
+
+        continue;
+      }
+
       if (_charslotBareRegex.hasMatch(trimmedLeft)) {
-        currentPortraitId = null;
+        primarySpriteId = null;
+        secondarySpriteId = null;
         continue;
       }
 
       final charslotMatch = _charslotRegex.firstMatch(trimmedLeft);
       if (charslotMatch != null) {
         final name = charslotMatch.group(1) ?? '';
-        currentPortraitId = name.isEmpty ? null : name;
+        primarySpriteId = name.isEmpty ? null : name;
+        secondarySpriteId = null;
         continue;
       }
 
@@ -194,12 +273,23 @@ class StoryParser {
         final rawSpeaker = speakerMatch.group(1) ?? '';
         final speaker = rawSpeaker.trim().isEmpty ? null : rawSpeaker;
         final text = (speakerMatch.group(2) ?? '').trim();
+
         if (text.isNotEmpty) {
+          String? portrait = _resolvePortrait(
+            speaker: speaker,
+            primaryId: primarySpriteId,
+            secondaryId: secondarySpriteId,
+          );
+
+          if (portrait == null && speaker != null) {
+            portrait = CharacterSpriteMapStore.lookupSync(speaker);
+          }
+
           result.add(
             StoryLineElement(
               speaker: speaker,
               text: text,
-              speakerPortraitId: currentPortraitId,
+              speakerPortraitId: portrait,
               requiredValue: currentRequiredValue,
               gateChoiceId: currentGateChoiceId,
             ),

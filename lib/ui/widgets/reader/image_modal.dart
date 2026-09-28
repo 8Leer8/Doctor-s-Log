@@ -244,7 +244,7 @@ class _ImageModalState extends State<ImageModal> {
             child: Text(
               widget.assetPath != null
                   ? 'This image could not be found.'
-                  : 'We do not have an image for this.',
+                  : 'We do not have an image at this moment.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
