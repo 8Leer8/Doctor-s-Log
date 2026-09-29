@@ -33,12 +33,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     try {
       final main = await _repository.fetchMainTheme();
       final side = await _repository.fetchSideStories();
+      if (!mounted) return;
       setState(() {
         _mainTheme = main;
         _sideStories = side;
       });
       await _loadProgressFor([...main, ...side]);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     }
   }
@@ -51,6 +53,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (!mounted) return;
       setState(() => _finishedCounts[chapter.number] = finished.length);
     }
+  }
+
+  /// Called when a chapter detail screen is closed, so the card's
+  /// progress bar reflects whatever was saved while inside.
+  Future<void> _refreshChapter(ChapterPreview chapter) async {
+    final finished = await ReadingProgressStore.getFinishedParts(
+      chapter.number,
+    );
+    if (!mounted) return;
+    setState(() => _finishedCounts[chapter.number] = finished.length);
   }
 
   @override
@@ -90,10 +102,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
     return TabBarView(
       children: [
-        _MainThemeGrid(chapters: _mainTheme!, finishedCounts: _finishedCounts),
+        _MainThemeGrid(
+          chapters: _mainTheme!,
+          finishedCounts: _finishedCounts,
+          onChapterClosed: _refreshChapter,
+        ),
         _SideStoryList(
           chapters: _sideStories!,
           finishedCounts: _finishedCounts,
+          onChapterClosed: _refreshChapter,
         ),
       ],
     );
@@ -178,8 +195,13 @@ class _SectionTabBar extends StatelessWidget {
 class _MainThemeGrid extends StatelessWidget {
   final List<ChapterPreview> chapters;
   final Map<String, int> finishedCounts;
+  final Future<void> Function(ChapterPreview chapter) onChapterClosed;
 
-  const _MainThemeGrid({required this.chapters, required this.finishedCounts});
+  const _MainThemeGrid({
+    required this.chapters,
+    required this.finishedCounts,
+    required this.onChapterClosed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -205,8 +227,8 @@ class _MainThemeGrid extends StatelessWidget {
         return ChapterCard(
           chapter: chapter,
           finishedCount: finishedCounts[chapter.number] ?? 0,
-          onTap: () {
-            Navigator.of(context).push(
+          onTap: () async {
+            await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ChapterDetailScreen(
                   chapter: chapter,
@@ -214,6 +236,7 @@ class _MainThemeGrid extends StatelessWidget {
                 ),
               ),
             );
+            await onChapterClosed(chapter);
           },
         );
       },
@@ -224,8 +247,13 @@ class _MainThemeGrid extends StatelessWidget {
 class _SideStoryList extends StatelessWidget {
   final List<ChapterPreview> chapters;
   final Map<String, int> finishedCounts;
+  final Future<void> Function(ChapterPreview chapter) onChapterClosed;
 
-  const _SideStoryList({required this.chapters, required this.finishedCounts});
+  const _SideStoryList({
+    required this.chapters,
+    required this.finishedCounts,
+    required this.onChapterClosed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -240,14 +268,14 @@ class _SideStoryList extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.all(12),
       itemCount: chapters.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final chapter = chapters[index];
         return ChapterLandscapeCard(
           chapter: chapter,
           finishedCount: finishedCounts[chapter.number] ?? 0,
-          onTap: () {
-            Navigator.of(context).push(
+          onTap: () async {
+            await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ChapterDetailScreen(
                   chapter: chapter,
@@ -255,6 +283,7 @@ class _SideStoryList extends StatelessWidget {
                 ),
               ),
             );
+            await onChapterClosed(chapter);
           },
         );
       },
