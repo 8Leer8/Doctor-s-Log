@@ -48,6 +48,7 @@ class ChapterHeaderImage extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         _buildImage(),
+        // Top scrim so the status bar / back button stay readable.
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -58,16 +59,7 @@ class ChapterHeaderImage extends StatelessWidget {
             ),
           ),
         ),
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.transparent, Colors.transparent, Colors.black87],
-              stops: [0.0, 0.45, 1.0],
-            ),
-          ),
-        ),
+        // Side vignette (drawn BEFORE the bottom fade so it can't tint it).
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -80,6 +72,21 @@ class ChapterHeaderImage extends StatelessWidget {
                 Colors.black45,
               ],
               stops: [0.0, 0.12, 0.88, 1.0],
+            ),
+          ),
+        ),
+        // Bottom fade into the body color.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.background.withValues(alpha: 0.0),
+                AppColors.background.withValues(alpha: 0.0),
+                AppColors.background,
+              ],
+              stops: const [0.0, 0.45, 1.0],
             ),
           ),
         ),

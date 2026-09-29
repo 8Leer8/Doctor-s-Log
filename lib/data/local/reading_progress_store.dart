@@ -10,7 +10,10 @@ class ReadingProgressStore {
     return list.toSet();
   }
 
-  static Future<void> setFinishedParts(String chapterId, Set<int> finished) async {
+  static Future<void> setFinishedParts(
+    String chapterId,
+    Set<int> finished,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('finished_$chapterId', jsonEncode(finished.toList()));
   }
@@ -23,7 +26,10 @@ class ReadingProgressStore {
     return (jsonDecode(raw) as Map<String, dynamic>).cast<String, String>();
   }
 
-  static Future<void> setChoices(String chapterId, Map<String, String> choices) async {
+  static Future<void> setChoices(
+    String chapterId,
+    Map<String, String> choices,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('choices_$chapterId', jsonEncode(choices));
   }
@@ -31,7 +37,8 @@ class ReadingProgressStore {
   /// Exact resume point: which part (by originalIndex) and which line
   /// within that part's raw content the reader was last at.
   static Future<(int partOriginalIndex, int elementIndex)?> getResumePosition(
-      String chapterId) async {
+    String chapterId,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('resume_$chapterId');
     if (raw == null) return null;
@@ -40,11 +47,23 @@ class ReadingProgressStore {
   }
 
   static Future<void> setResumePosition(
-      String chapterId, int partOriginalIndex, int elementIndex) async {
+    String chapterId,
+    int partOriginalIndex,
+    int elementIndex,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       'resume_$chapterId',
       jsonEncode({'part': partOriginalIndex, 'element': elementIndex}),
     );
+  }
+
+  /// Wipes everything tied to a chapter: finished parts, answered
+  /// choices, and the exact resume position.
+  static Future<void> clearChapterProgress(String chapterId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('finished_$chapterId');
+    await prefs.remove('choices_$chapterId');
+    await prefs.remove('resume_$chapterId');
   }
 }

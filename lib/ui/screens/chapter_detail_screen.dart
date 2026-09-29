@@ -498,9 +498,12 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     _saveFinishedProgress();
   }
 
-  void _clearAll() {
+  /// Resets ALL reading state for this chapter: finished parts, answered
+  /// choices, and the saved resume position. Afterwards every part starts
+  /// from its very top with no choices pre-answered.
+  Future<void> _clearAll() async {
     setState(() => _finished = List.filled(_finished.length, false));
-    _saveFinishedProgress();
+    await ReadingProgressStore.clearChapterProgress(widget.chapter.number);
   }
 
   void _openFilterSort() {

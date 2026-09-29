@@ -25,12 +25,16 @@ class ChapterDetailHeader extends StatelessWidget {
     if (category == StoryCategory.mainTheme) {
       return Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black54, Colors.black87],
-            stops: [0.0, 0.3, 1.0],
+            colors: [
+              AppColors.background.withValues(alpha: 0.0),
+              AppColors.background.withValues(alpha: 0.6),
+              AppColors.background,
+            ],
+            stops: const [0.0, 0.3, 1.0],
           ),
         ),
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
