@@ -12,10 +12,7 @@ class ChapterHeaderImage extends StatelessWidget {
     required this.category,
   });
 
-  String get _folder => switch (category) {
-    StoryCategory.mainTheme => 'chapters',
-    StoryCategory.sideStory => 'side_stories',
-  };
+  String get _folder => category.imageFolder;
 
   Widget _buildImage() {
     return Image.asset(
@@ -40,7 +37,9 @@ class ChapterHeaderImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (category == StoryCategory.sideStory) {
+    // Only the main story gets the tall header with gradient overlays;
+    // side stories and vignettes use the plain banner image.
+    if (category != StoryCategory.mainTheme) {
       return _buildImage();
     }
 

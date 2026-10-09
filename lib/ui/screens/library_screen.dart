@@ -3,13 +3,21 @@ import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
 import '../../models/story_category.dart';
 import '../../data/repository/chapter_repository.dart';
+import '../../data/local/chapter_descriptions_loader.dart';
 import '../../data/local/reading_progress_store.dart';
-import '../widgets/chapter_card.dart';
-import '../widgets/chapter_landscape_card.dart';
+import '../../data/search/library_search_index.dart';
+import '../controllers/library_search_controller.dart';
+import '../widgets/library/chapter_grid.dart';
+import '../widgets/library/chapter_landscape_list.dart';
+import '../widgets/library/library_section_tab_bar.dart';
+import '../widgets/library/search_suggestions.dart';
 import 'chapter_detail_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key});
+  /// Search state owned by AppShell (the single top bar hosts the field).
+  final LibrarySearchController search;
+
+  const LibraryScreen({super.key, required this.search});
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -18,27 +26,59 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen> {
   final _repository = ChapterRepository();
 
+  LibrarySearchController get _search => widget.search;
+
   List<ChapterPreview>? _mainTheme;
   List<ChapterPreview>? _sideStories;
+  List<ChapterPreview>? _vignettes;
   final Map<String, int> _finishedCounts = {};
   String? _error;
+
+  // Cached results — refreshed only when the effective query changes
+  // (or the data reloads), NOT on every rebuild.
+  List<ChapterPreview> _shownMain = const [];
+  List<ChapterPreview> _shownSide = const [];
+  List<ChapterPreview> _shownVignettes = const [];
+  String? _resultsKey;
 
   @override
   void initState() {
     super.initState();
+    _search.addListener(_onSearchChanged);
     _load();
   }
+
+  @override
+  void dispose() {
+    _search.removeListener(_onSearchChanged);
+    super.dispose();
+  }
+
+  // ----------------------------------------------------------------- data
 
   Future<void> _load() async {
     try {
       final main = await _repository.fetchMainTheme();
       final side = await _repository.fetchSideStories();
+      final vignettes = await _repository.fetchVignettes();
+      final descriptions = await ChapterDescriptionsLoader.load();
       if (!mounted) return;
       setState(() {
         _mainTheme = main;
         _sideStories = side;
+        _vignettes = vignettes;
+        _resultsKey = null; // force results to rebuild
       });
-      await _loadProgressFor([...main, ...side]);
+      // Notifies listeners -> _onSearchChanged -> results refresh.
+      _search.attachIndex(
+        LibrarySearchIndex(
+          main: main,
+          side: side,
+          vignettes: vignettes,
+          descriptions: descriptions,
+        ),
+      );
+      await _loadProgressFor([...main, ...side, ...vignettes]);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -55,8 +95,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  /// Called when a chapter detail screen is closed, so the card's
-  /// progress bar reflects whatever was saved while inside.
   Future<void> _refreshChapter(ChapterPreview chapter) async {
     final finished = await ReadingProgressStore.getFinishedParts(
       chapter.number,
@@ -65,24 +103,94 @@ class _LibraryScreenState extends State<LibraryScreen> {
     setState(() => _finishedCounts[chapter.number] = finished.length);
   }
 
+  /// Opens a chapter, then refreshes its progress bar when it closes.
+  /// Vignettes reuse the side-story detail layout.
+  Future<void> _openChapter(
+    ChapterPreview chapter,
+    StoryCategory category,
+  ) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            ChapterDetailScreen(chapter: chapter, category: category),
+      ),
+    );
+    await _refreshChapter(chapter);
+  }
+
+  // --------------------------------------------------------------- search
+
+  /// Must be called inside setState.
+  void _refreshResults() {
+    final index = _search.index;
+    final main = _mainTheme;
+    final side = _sideStories;
+    final vignettes = _vignettes;
+    if (index == null || main == null || side == null || vignettes == null) {
+      return;
+    }
+
+    final key = _search.filtering ? _search.query : '';
+    if (key == _resultsKey) return;
+    _resultsKey = key;
+    _shownMain = key.isEmpty ? main : index.searchMain(key);
+    _shownSide = key.isEmpty ? side : index.searchSide(key);
+    _shownVignettes = key.isEmpty ? vignettes : index.searchVignettes(key);
+  }
+
+  void _onSearchChanged() {
+    if (!mounted) return;
+    setState(_refreshResults);
+  }
+
+  /// While searching: the first OTHER tab that has matches, offered as a
+  /// shortcut from an empty tab.
+  ({int count, String label, int tab}) _altTabFor(int current) {
+    final tabs = <(String, int)>[
+      ('MAIN THEME', _shownMain.length),
+      ('SIDE STORIES', _shownSide.length),
+      ('VIGNETTES', _shownVignettes.length),
+    ];
+    for (int i = 0; i < tabs.length; i++) {
+      if (i != current && tabs[i].$2 > 0) {
+        return (count: tabs[i].$2, label: tabs[i].$1, tab: i);
+      }
+    }
+    return (count: 0, label: '', tab: 0);
+  }
+
+  // ---------------------------------------------------------------- build
+
   @override
   Widget build(BuildContext context) {
+    final filtering = _search.filtering;
+
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Container(
         color: AppColors.background,
         child: Column(
           children: [
-            const _TopBar(),
-            const _SectionTabBar(),
-            Expanded(child: _buildBody()),
+            if (_search.searching)
+              SearchSuggestions(
+                suggestions: _search.suggestions,
+                query: _search.rawQuery,
+                isStart: _search.query.isEmpty,
+                onTap: _search.applySuggestion,
+              ),
+            LibrarySectionTabBar(
+              mainCount: filtering ? _shownMain.length : null,
+              sideCount: filtering ? _shownSide.length : null,
+              vignetteCount: filtering ? _shownVignettes.length : null,
+            ),
+            Expanded(child: _buildBody(filtering)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(bool filtering) {
     if (_error != null) {
       return Center(
         child: Padding(
@@ -95,198 +203,57 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       );
     }
-    if (_mainTheme == null || _sideStories == null) {
+    if (_mainTheme == null || _sideStories == null || _vignettes == null) {
       return const Center(
         child: CircularProgressIndicator(color: AppColors.amber),
       );
     }
+
+    final altMain = _altTabFor(0);
+    final altSide = _altTabFor(1);
+    final altVignette = _altTabFor(2);
+
     return TabBarView(
       children: [
-        _MainThemeGrid(
-          chapters: _mainTheme!,
+        ChapterGrid(
+          chapters: _shownMain,
           finishedCounts: _finishedCounts,
-          onChapterClosed: _refreshChapter,
+          imageFolder: StoryCategory.mainTheme.imageFolder,
+          filtering: filtering,
+          query: _search.query,
+          emptyTitle: 'NO CHAPTERS',
+          emptyMessage: 'No chapters found.',
+          otherCount: altMain.count,
+          otherLabel: altMain.label,
+          otherTabIndex: altMain.tab,
+          onOpenChapter: (c) => _openChapter(c, StoryCategory.mainTheme),
         ),
-        _SideStoryList(
-          chapters: _sideStories!,
+        ChapterLandscapeList(
+          chapters: _shownSide,
           finishedCounts: _finishedCounts,
-          onChapterClosed: _refreshChapter,
+          filtering: filtering,
+          query: _search.query,
+          emptyTitle: 'NO SIDE STORIES',
+          emptyMessage: 'No side stories found.',
+          otherCount: altSide.count,
+          otherLabel: altSide.label,
+          otherTabIndex: altSide.tab,
+          onOpenChapter: (c) => _openChapter(c, StoryCategory.sideStory),
+        ),
+        ChapterGrid(
+          chapters: _shownVignettes,
+          finishedCounts: _finishedCounts,
+          imageFolder: StoryCategory.vignette.imageFolder,
+          filtering: filtering,
+          query: _search.query,
+          emptyTitle: 'NO VIGNETTES',
+          emptyMessage: 'No vignettes found.',
+          otherCount: altVignette.count,
+          otherLabel: altVignette.label,
+          otherTabIndex: altVignette.tab,
+          onOpenChapter: (c) => _openChapter(c, StoryCategory.vignette),
         ),
       ],
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar();
-
-  @override
-  Widget build(BuildContext context) {
-    final statusBarHeight = MediaQuery.of(context).padding.top;
-
-    return Container(
-      height: statusBarHeight + 52,
-      padding: EdgeInsets.only(top: statusBarHeight),
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            const Text(
-              'LIBRARY',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.5,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(
-                Icons.search,
-                color: AppColors.coldGray,
-                size: 22,
-              ),
-              onPressed: () {},
-            ),
-            IconButton(
-              icon: const Icon(Icons.tune, color: AppColors.coldGray, size: 20),
-              onPressed: () {},
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionTabBar extends StatelessWidget {
-  const _SectionTabBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
-      ),
-      child: const TabBar(
-        isScrollable: true,
-        indicatorColor: AppColors.amber,
-        labelColor: AppColors.amber,
-        unselectedLabelColor: AppColors.coldGray,
-        labelStyle: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1,
-        ),
-        tabs: [
-          Tab(text: 'MAIN THEME'),
-          Tab(text: 'SIDE STORIES'),
-        ],
-      ),
-    );
-  }
-}
-
-class _MainThemeGrid extends StatelessWidget {
-  final List<ChapterPreview> chapters;
-  final Map<String, int> finishedCounts;
-  final Future<void> Function(ChapterPreview chapter) onChapterClosed;
-
-  const _MainThemeGrid({
-    required this.chapters,
-    required this.finishedCounts,
-    required this.onChapterClosed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (chapters.isEmpty) {
-      return const Center(
-        child: Text(
-          'No chapters found',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-      );
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.72,
-      ),
-      itemCount: chapters.length,
-      itemBuilder: (context, index) {
-        final chapter = chapters[index];
-        return ChapterCard(
-          chapter: chapter,
-          finishedCount: finishedCounts[chapter.number] ?? 0,
-          onTap: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ChapterDetailScreen(
-                  chapter: chapter,
-                  category: StoryCategory.mainTheme,
-                ),
-              ),
-            );
-            await onChapterClosed(chapter);
-          },
-        );
-      },
-    );
-  }
-}
-
-class _SideStoryList extends StatelessWidget {
-  final List<ChapterPreview> chapters;
-  final Map<String, int> finishedCounts;
-  final Future<void> Function(ChapterPreview chapter) onChapterClosed;
-
-  const _SideStoryList({
-    required this.chapters,
-    required this.finishedCounts,
-    required this.onChapterClosed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (chapters.isEmpty) {
-      return const Center(
-        child: Text(
-          'No side stories found',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: chapters.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 14),
-      itemBuilder: (context, index) {
-        final chapter = chapters[index];
-        return ChapterLandscapeCard(
-          chapter: chapter,
-          finishedCount: finishedCounts[chapter.number] ?? 0,
-          onTap: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ChapterDetailScreen(
-                  chapter: chapter,
-                  category: StoryCategory.sideStory,
-                ),
-              ),
-            );
-            await onChapterClosed(chapter);
-          },
-        );
-      },
     );
   }
 }

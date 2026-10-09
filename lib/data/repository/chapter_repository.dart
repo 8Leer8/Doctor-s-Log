@@ -7,19 +7,29 @@ class ChapterRepository {
   final StoryIndexSource _indexSource = StoryIndexSource();
 
   Future<List<ChapterPreview>> fetchMainTheme() async {
-    final index = await _indexSource.fetchIndex();
-    final entries =
-        index.values.where((e) => e.entryType == 'MAINLINE').toList()..sort(
-          (a, b) => _mainlineSortKey(a.id).compareTo(_mainlineSortKey(b.id)),
-        );
+    final entries = await _entriesOfType('MAINLINE');
+    entries.sort(
+      (a, b) => _mainlineSortKey(a.id).compareTo(_mainlineSortKey(b.id)),
+    );
     return entries.map(_toChapterPreview).toList();
   }
 
-  Future<List<ChapterPreview>> fetchSideStories() async {
+  Future<List<ChapterPreview>> fetchSideStories() =>
+      _fetchSortedByName('ACTIVITY');
+
+  /// Vignettes are the game's "mini stories" (entryType MINI_ACTIVITY). They
+  /// live in the same index as Main Theme and Side Stories.
+  Future<List<ChapterPreview>> fetchVignettes() =>
+      _fetchSortedByName('MINI_ACTIVITY');
+
+  Future<List<ChapterIndexEntry>> _entriesOfType(String entryType) async {
     final index = await _indexSource.fetchIndex();
-    final entries =
-        index.values.where((e) => e.entryType == 'ACTIVITY').toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
+    return index.values.where((e) => e.entryType == entryType).toList();
+  }
+
+  Future<List<ChapterPreview>> _fetchSortedByName(String entryType) async {
+    final entries = await _entriesOfType(entryType);
+    entries.sort((a, b) => a.name.compareTo(b.name));
     return entries.map(_toChapterPreview).toList();
   }
 

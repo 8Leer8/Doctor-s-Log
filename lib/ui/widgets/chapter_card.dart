@@ -8,19 +8,24 @@ class ChapterCard extends StatelessWidget {
   final int finishedCount;
   final VoidCallback? onTap;
 
+  /// Folder under assets/images/ that holds this card's cover art
+  /// ('chapters' for the main story, 'side_stories' for vignettes).
+  final String imageFolder;
+
   const ChapterCard({
     super.key,
     required this.chapter,
     required this.finishedCount,
     this.onTap,
+    this.imageFolder = 'chapters',
   });
 
   Widget _buildImage() {
     return Image.asset(
-      'assets/images/chapters/${chapter.number}.jpg',
+      'assets/images/$imageFolder/${chapter.number}.jpg',
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) => Image.asset(
-        'assets/images/chapters/${chapter.number}.png',
+        'assets/images/$imageFolder/${chapter.number}.png',
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => Container(
           color: AppColors.surfaceRaised,
@@ -39,7 +44,9 @@ class ChapterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = chapter.parts.length;
-    final progressRatio = total == 0 ? 0.0 : (finishedCount / total).clamp(0.0, 1.0);
+    final progressRatio = total == 0
+        ? 0.0
+        : (finishedCount / total).clamp(0.0, 1.0);
     final cardLabel = formatChapterCardLabel(chapter.number, chapter.subtitle);
 
     return ClipPath(
@@ -58,7 +65,11 @@ class ChapterCard extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.transparent, Colors.black87],
+                    colors: [
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black87,
+                    ],
                     stops: [0.0, 0.45, 1.0],
                   ),
                 ),
@@ -99,13 +110,18 @@ class ChapterCard extends StatelessWidget {
                         value: progressRatio,
                         minHeight: 3,
                         backgroundColor: Colors.white24,
-                        valueColor: const AlwaysStoppedAnimation(AppColors.amber),
+                        valueColor: const AlwaysStoppedAnimation(
+                          AppColors.amber,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       '$finishedCount / $total',
-                      style: const TextStyle(fontSize: 10, color: Colors.white70),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white70,
+                      ),
                     ),
                   ],
                 ),

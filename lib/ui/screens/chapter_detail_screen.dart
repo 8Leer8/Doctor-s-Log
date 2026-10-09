@@ -71,7 +71,9 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   static const double _kScrollDirectionThreshold = 20.0;
 
-  bool get _isSideStory => widget.category == StoryCategory.sideStory;
+  /// Side stories and vignettes use the banner-style layout; only the main
+  /// story uses the tall full-bleed header.
+  bool get _usesBannerLayout => widget.category != StoryCategory.mainTheme;
 
   @override
   void initState() {
@@ -173,7 +175,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   }
 
   Future<void> _openBannerModal() async {
-    final folder = _isSideStory ? 'side_stories' : 'chapters';
+    final folder = widget.category.imageFolder;
     final assetPath = 'assets/images/$folder/${widget.chapter.number}.jpg';
 
     await ImageModal.show(
@@ -371,7 +373,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     const fillRangePx = 40.0;
     final fillFraction = (offset / fillRangePx).clamp(0.0, 1.0);
 
-    final headerHeight = _isSideStory
+    final headerHeight = _usesBannerLayout
         ? _sideStoryHeaderHeight(context)
         : _mainThemeHeaderHeight(context);
     final titleStart = headerHeight - _kToolbarHeight + 20;
@@ -760,7 +762,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
-        body: _isSideStory ? _buildSideStoryBody() : _buildMainThemeBody(),
+        body: _usesBannerLayout ? _buildSideStoryBody() : _buildMainThemeBody(),
       ),
     );
   }
