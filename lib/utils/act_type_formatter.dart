@@ -4,6 +4,8 @@ String formatActType(String raw) {
       return 'Main Story';
     case 'ACTIVITY_STORY':
       return 'Event Story';
+    case 'MINI_STORY':
+      return 'Vignette';
     default:
       return raw
           .split('_')
@@ -14,7 +16,7 @@ String formatActType(String raw) {
 
 /// Short label shown on the chapter card itself — "CHAPTER 3" for main
 /// story entries (parsed from the "main_3" id), or the formatted act
-/// type ("EVENT STORY") for everything else.
+/// type ("EVENT STORY", "VIGNETTE") for everything else.
 String formatChapterCardLabel(String chapterId, String actTypeRaw) {
   final mainMatch = RegExp(r'^main_(\d+)$').firstMatch(chapterId);
   if (mainMatch != null) {

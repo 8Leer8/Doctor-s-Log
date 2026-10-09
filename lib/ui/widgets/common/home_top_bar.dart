@@ -34,11 +34,7 @@ class HomeTitleRow extends StatelessWidget {
   final String title;
   final List<Widget> actions;
 
-  const HomeTitleRow({
-    super.key,
-    required this.title,
-    this.actions = const [],
-  });
+  const HomeTitleRow({super.key, required this.title, this.actions = const []});
 
   @override
   Widget build(BuildContext context) {
