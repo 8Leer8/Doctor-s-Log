@@ -71,9 +71,9 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
 
   static const double _kScrollDirectionThreshold = 20.0;
 
-  /// Side stories and vignettes use the banner-style layout; only the main
-  /// story uses the tall full-bleed header.
-  bool get _usesBannerLayout => widget.category != StoryCategory.mainTheme;
+  /// Side stories use the wide banner above the text. The main story and
+  /// vignettes (portrait covers) use the tall full-bleed header.
+  bool get _usesBannerLayout => !widget.category.usesTallHeader;
 
   @override
   void initState() {

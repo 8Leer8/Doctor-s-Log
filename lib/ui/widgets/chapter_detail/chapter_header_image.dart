@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/story_category.dart';
@@ -14,32 +15,42 @@ class ChapterHeaderImage extends StatelessWidget {
 
   String get _folder => category.imageFolder;
 
+  Widget _placeholder(Object error) {
+    if (kDebugMode) {
+      // Shows up in the `flutter run` console so a missing / unregistered
+      // cover is obvious instead of silently showing the gray box.
+      debugPrint(
+        'Cover not found for "$chapterId" in assets/images/$_folder/ -> $error',
+      );
+    }
+    return Container(
+      color: AppColors.surfaceRaised,
+      child: Center(
+        child: Icon(
+          Icons.image_outlined,
+          size: 48,
+          color: AppColors.coldGray.withValues(alpha: 0.4),
+        ),
+      ),
+    );
+  }
+
   Widget _buildImage() {
     return Image.asset(
       'assets/images/$_folder/$chapterId.jpg',
       fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) => Image.asset(
+      errorBuilder: (context, jpgError, _) => Image.asset(
         'assets/images/$_folder/$chapterId.png',
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: AppColors.surfaceRaised,
-          child: Center(
-            child: Icon(
-              Icons.image_outlined,
-              size: 48,
-              color: AppColors.coldGray.withValues(alpha: 0.4),
-            ),
-          ),
-        ),
+        errorBuilder: (context, _, _) => _placeholder(jpgError),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Only the main story gets the tall header with gradient overlays;
-    // side stories and vignettes use the plain banner image.
-    if (category != StoryCategory.mainTheme) {
+    // Side stories: plain banner image, no overlays.
+    if (!category.usesTallHeader) {
       return _buildImage();
     }
 

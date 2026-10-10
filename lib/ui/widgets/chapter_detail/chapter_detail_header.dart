@@ -22,7 +22,7 @@ class ChapterDetailHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final formattedType = formatActType(chapter.subtitle);
 
-    if (category == StoryCategory.mainTheme) {
+    if (category.usesTallHeader) {
       return Container(
         width: double.infinity,
         decoration: BoxDecoration(

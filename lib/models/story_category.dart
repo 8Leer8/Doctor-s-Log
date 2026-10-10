@@ -9,4 +9,5 @@ extension StoryCategoryAssets on StoryCategory {
     StoryCategory.sideStory => 'side_stories',
     StoryCategory.vignette => 'vignettes',
   };
+  bool get usesTallHeader => this != StoryCategory.sideStory;
 }
