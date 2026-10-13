@@ -21,20 +21,37 @@ class StoryParser {
   static final RegExp _subtitleRegex = RegExp(
     r'^\[Subtitle\([^\]]*text\s*=\s*"((?:[^"\\]|\\.)*)"',
   );
-  static final RegExp _characterNameRegex = RegExp(r'''name\s*=\s*"([^"]*)"''');
+
+  // ---- Stage / sprite tracking -------------------------------------------
+  //
+  // Scripts describe who is on screen in two formats:
+  //   legacy : [Character(name="a", name2="b", focus=1|2)]
+  //   newer  : [charslot(slot="l|m|r", name="a", focus="l|m|r|n|all")]
+  // `focus` marks the character who is speaking and persists until changed.
+  static final RegExp _characterNameRegex = RegExp(
+    r'(?<![A-Za-z0-9])name\s*=\s*"([^"]*)"',
+  );
   static final RegExp _characterName2Regex = RegExp(
-    r'''name2\s*=\s*"([^"]*)"''',
+    r'(?<![A-Za-z0-9])name2\s*=\s*"([^"]*)"',
   );
   static final RegExp _characterTagRegex = RegExp(
     r'^\[character(?:\(|\])',
     caseSensitive: false,
   );
-  static final RegExp _charslotRegex = RegExp(
-    r'^\[charslot\([^\]]*name\s*=\s*"([^"]*)"',
+  static final RegExp _charslotTagRegex = RegExp(
+    r'^\[charslot(?:\(|\])',
+    caseSensitive: false,
   );
-  static final RegExp _charslotBareRegex = RegExp(
-    r'^\[charslot\(\s*\)\]|^\[charslot\]',
+  static final RegExp _slotRegex = RegExp(
+    r'(?<![A-Za-z0-9])slot\s*=\s*"([^"]*)"',
+    caseSensitive: false,
   );
+  static final RegExp _focusNumRegex = RegExp(r'focus\s*=\s*(-?\d)');
+  static final RegExp _focusStrRegex = RegExp(
+    r'(?<![A-Za-z0-9])focus\s*=\s*"?([A-Za-z]*)"?',
+    caseSensitive: false,
+  );
+
   static final RegExp _animTextRegex = RegExp(
     r'^\[animtext\([^\]]*\)\]\s*(.*)$',
   );
@@ -76,18 +93,74 @@ class StoryParser {
     return speakerNorm.contains(token) || token.contains(speakerNorm);
   }
 
+  static String? _cleanSprite(String? v) {
+    if (v == null) return null;
+    final t = v.trim();
+    if (t.isEmpty || t.toLowerCase() == 'char_empty') return null;
+    return t;
+  }
+
+  static String? _slotKey(String raw) {
+    switch (raw.trim().toLowerCase()) {
+      case 'l':
+      case 'left':
+        return 'L';
+      case 'm':
+      case 'middle':
+        return 'M';
+      case 'r':
+      case 'right':
+        return 'R';
+    }
+    return null;
+  }
+
+  /// Legacy `focus=` values: 1 / 2 = that sprite is speaking, -1 = nobody on
+  /// stage is speaking (the speaker is off-screen: phone call, radio, out of
+  /// frame), anything else = default highlight (null).
+  static Set<String>? _legacyFocus(int v) {
+    if (v == 1) return {'A'};
+    if (v == 2) return {'B'};
+    if (v == -1) return <String>{};
+    return null;
+  }
+
+  /// True when the script says nobody on stage is the speaker.
+  static bool _isOffScreen(Map<String, String> stage, Set<String>? focus) =>
+      stage.isNotEmpty && focus != null && focus.isEmpty;
+
+  /// Picks the sprite for whoever is speaking, using what is on stage:
+  ///  1. a sprite whose id matches the speaker's name (operators),
+  ///  2. the sprite in the focused slot (the script marks the speaker),
+  ///  3. the only sprite on stage.
+  /// Returns null when the stage is empty or ambiguous; the caller then falls
+  /// back to the global speaker -> sprite map.
   static String? _resolvePortrait({
     required String? speaker,
-    required String? primaryId,
-    required String? secondaryId,
+    required Map<String, String> stage,
+    required Set<String>? focus,
   }) {
     if (speaker == null || speaker.trim().isEmpty) return null;
-    if (primaryId != null && _matchesSpeaker(primaryId, speaker)) {
-      return primaryId;
+    if (stage.isEmpty) return null;
+
+    for (final id in stage.values) {
+      if (_matchesSpeaker(id, speaker)) return id;
     }
-    if (secondaryId != null && _matchesSpeaker(secondaryId, speaker)) {
-      return secondaryId;
+
+    // The script says nobody on stage is speaking, so the sprite(s) shown
+    // belong to the listener(s), not to this speaker. Show no portrait.
+    if (_isOffScreen(stage, focus)) return null;
+
+    if (focus != null && focus.isNotEmpty) {
+      final focused = <String>[
+        for (final k in focus)
+          if (stage.containsKey(k)) stage[k]!,
+      ];
+      if (focused.length == 1) return focused.first;
     }
+
+    if (stage.length == 1) return stage.values.first;
+
     return null;
   }
 
@@ -101,8 +174,9 @@ class StoryParser {
     String? lastBackgroundImage;
     String? lastImageId;
 
-    String? primarySpriteId;
-    String? secondarySpriteId;
+    // slot key ('A','B' legacy; 'L','M','R' charslot) -> sprite id
+    final stage = <String, String>{};
+    Set<String>? focus;
 
     for (final rawLine in raw.split('\n')) {
       final line = rawLine.trimRight();
@@ -196,42 +270,89 @@ class StoryParser {
         continue;
       }
 
+      // Legacy format: [Character(name=..., name2=..., focus=1|2)]
       if (_characterTagRegex.hasMatch(trimmedLeft)) {
         final nameMatch = _characterNameRegex.firstMatch(trimmedLeft);
         final name2Match = _characterName2Regex.firstMatch(trimmedLeft);
+        final focusMatch = _focusNumRegex.firstMatch(trimmedLeft);
 
         if (nameMatch == null && name2Match == null) {
-          primarySpriteId = null;
-          secondarySpriteId = null;
+          if (focusMatch != null) {
+            // Focus-only tag: sprites stay, the active speaker changes.
+            focus = _legacyFocus(int.parse(focusMatch.group(1)!));
+          } else {
+            // Bare tag (e.g. fade-out): clears the stage.
+            stage.clear();
+            focus = null;
+          }
           continue;
         }
 
         if (nameMatch != null) {
-          final v = nameMatch.group(1) ?? '';
-          primarySpriteId = (v.isEmpty || v == 'char_empty') ? null : v;
+          stage.remove('A');
+          final v = _cleanSprite(nameMatch.group(1));
+          if (v != null) stage['A'] = v;
         }
 
         if (name2Match != null) {
-          final v = name2Match.group(1) ?? '';
-          secondarySpriteId = (v.isEmpty || v == 'char_empty') ? null : v;
+          stage.remove('B');
+          final v = _cleanSprite(name2Match.group(1));
+          if (v != null) stage['B'] = v;
         } else if (nameMatch != null) {
-          secondarySpriteId = null;
+          stage.remove('B');
         }
 
+        // `focus` belongs to the tag it is written on: a tag without it goes
+        // back to the default highlight (so [Character(name=A)] after a
+        // focus=-1 line makes A the speaker again).
+        focus = focusMatch != null
+            ? _legacyFocus(int.parse(focusMatch.group(1)!))
+            : null;
+
         continue;
       }
 
-      if (_charslotBareRegex.hasMatch(trimmedLeft)) {
-        primarySpriteId = null;
-        secondarySpriteId = null;
-        continue;
-      }
+      // Newer format: [charslot(slot="l|m|r", name=..., focus=...)]
+      if (_charslotTagRegex.hasMatch(trimmedLeft)) {
+        final slotMatch = _slotRegex.firstMatch(trimmedLeft);
+        final nameMatch = _characterNameRegex.firstMatch(trimmedLeft);
+        final focusMatch = _focusStrRegex.firstMatch(trimmedLeft);
+        final hasFocusAttr = trimmedLeft.toLowerCase().contains('focus');
 
-      final charslotMatch = _charslotRegex.firstMatch(trimmedLeft);
-      if (charslotMatch != null) {
-        final name = charslotMatch.group(1) ?? '';
-        primarySpriteId = name.isEmpty ? null : name;
-        secondarySpriteId = null;
+        if (slotMatch == null && nameMatch == null && !hasFocusAttr) {
+          // Bare [charslot] / duration-only: clears the stage.
+          stage.clear();
+          focus = null;
+          continue;
+        }
+
+        if (slotMatch != null && nameMatch != null) {
+          final slot = _slotKey(slotMatch.group(1) ?? '');
+          if (slot != null) {
+            final v = _cleanSprite(nameMatch.group(1));
+            if (v != null) {
+              stage[slot] = v;
+            } else {
+              stage.remove(slot);
+            }
+          }
+        }
+
+        if (focusMatch != null && hasFocusAttr) {
+          final fv = (focusMatch.group(1) ?? '').toLowerCase();
+          final key = _slotKey(fv);
+          if (key != null) {
+            focus = {key};
+          } else if (fv == 'all' || fv == 'a') {
+            focus = null; // everyone highlighted: default
+          } else {
+            focus = <String>{}; // n / none: nobody on stage is speaking
+          }
+        } else if (nameMatch != null) {
+          // A new sprite without a focus attribute goes back to the default.
+          focus = null;
+        }
+
         continue;
       }
 
@@ -275,13 +396,19 @@ class StoryParser {
         final text = (speakerMatch.group(2) ?? '').trim();
 
         if (text.isNotEmpty) {
+          // 1) what the scene itself shows (name match, focus, sole sprite)
           String? portrait = _resolvePortrait(
             speaker: speaker,
-            primaryId: primarySpriteId,
-            secondaryId: secondarySpriteId,
+            stage: stage,
+            focus: focus,
           );
 
-          if (portrait == null && speaker != null) {
+          // 2) fallback: global speaker -> sprite map (operators + NPCs).
+          //    Not used when the script says the speaker is off-screen
+          //    (phone call, radio, out of frame): no portrait is correct then.
+          if (portrait == null &&
+              speaker != null &&
+              !_isOffScreen(stage, focus)) {
             portrait = CharacterSpriteMapStore.lookupSync(speaker);
           }
 

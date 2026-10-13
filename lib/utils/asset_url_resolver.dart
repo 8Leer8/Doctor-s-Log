@@ -52,6 +52,11 @@ class AssetRef {
     return urls;
   }
 
+  static bool _isNpcId(String id) =>
+      id.startsWith('avg_npc') ||
+      id.startsWith('avgnew_npc') ||
+      id.startsWith('npc_');
+
   static List<String> _buildFilenameVariants(String rawId) {
     final results = <String>[];
     final seen = <String>{};
@@ -61,18 +66,31 @@ class AssetRef {
     }
 
     void addAllFor(String baseId) {
+      // Already a full filename id, e.g. "avg_npc_394_1#7$1".
       if (RegExp(r'#\d+\$\d+$').hasMatch(baseId)) {
         add('$baseId.png');
         return;
       }
 
+      // Has an expression but no outfit suffix, e.g. "avg_npc_143#2".
       if (RegExp(r'#\d+$').hasMatch(baseId)) {
         add('$baseId\$1.png');
         return;
       }
 
-      final stripped = baseId.replaceFirst(RegExp(r'_\d+$'), '');
-      if (stripped != baseId) {
+      // NPC ids (from npc_sprites.json) are already complete base ids such as
+      // "avg_npc_1612_1" or "avg_npc_242": try them as-is first so the very
+      // first request hits.
+      if (_isNpcId(baseId)) {
+        add('$baseId#1\$1.png');
+      }
+
+      // Only strip a trailing variant number when TWO numbers trail
+      // (avg_npc_1612_1 -> avg_npc_1612). Never strip from ids with a single
+      // number such as avg_npc_242 or char_002_amiya.
+      final m = RegExp(r'^(.+_\d+)_\d+$').firstMatch(baseId);
+      if (m != null) {
+        final stripped = m.group(1)!;
         add('$stripped#1\$1.png');
         add('${stripped}_1#1\$1.png');
       }
@@ -82,6 +100,8 @@ class AssetRef {
 
     void addFor(String baseId) {
       addAllFor(baseId);
+      // The char_/avg_ prefix swap only makes sense for operator sprites.
+      if (_isNpcId(baseId)) return;
       if (baseId.startsWith('char_')) {
         addAllFor('avg_${baseId.substring(5)}');
       } else if (baseId.startsWith('avg_')) {

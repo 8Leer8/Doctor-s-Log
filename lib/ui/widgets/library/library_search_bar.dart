@@ -158,7 +158,7 @@ class _LibrarySearchBarState extends State<LibrarySearchBar> {
               duration: const Duration(milliseconds: 450),
               layoutBuilder: (current, previous) => Stack(
                 alignment: Alignment.centerLeft,
-                children: [...previous, if (current != null) current],
+                children: [...previous, ?current],
               ),
               child: Text(
                 _hintText,
