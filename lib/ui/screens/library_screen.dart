@@ -8,7 +8,6 @@ import '../../data/local/reading_progress_store.dart';
 import '../../data/search/library_search_index.dart';
 import '../controllers/library_search_controller.dart';
 import '../widgets/library/chapter_grid.dart';
-import '../widgets/library/chapter_landscape_list.dart';
 import '../widgets/library/library_section_tab_bar.dart';
 import '../widgets/library/search_suggestions.dart';
 import 'chapter_detail_screen.dart';
@@ -104,7 +103,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   /// Opens a chapter, then refreshes its progress bar when it closes.
-  /// Vignettes reuse the side-story detail layout.
+  /// Side stories and vignettes use the same detail layout as the main story.
   Future<void> _openChapter(
     ChapterPreview chapter,
     StoryCategory category,
@@ -218,7 +217,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ChapterGrid(
           chapters: _shownMain,
           finishedCounts: _finishedCounts,
-          imageFolder: StoryCategory.mainTheme.imageFolder,
+          category: StoryCategory.mainTheme,
           filtering: filtering,
           query: _search.query,
           emptyTitle: 'NO CHAPTERS',
@@ -228,9 +227,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           otherTabIndex: altMain.tab,
           onOpenChapter: (c) => _openChapter(c, StoryCategory.mainTheme),
         ),
-        ChapterLandscapeList(
+        ChapterGrid(
           chapters: _shownSide,
           finishedCounts: _finishedCounts,
+          category: StoryCategory.sideStory,
           filtering: filtering,
           query: _search.query,
           emptyTitle: 'NO SIDE STORIES',
@@ -243,7 +243,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ChapterGrid(
           chapters: _shownVignettes,
           finishedCounts: _finishedCounts,
-          imageFolder: StoryCategory.vignette.imageFolder,
+          category: StoryCategory.vignette,
           filtering: filtering,
           query: _search.query,
           emptyTitle: 'NO VIGNETTES',

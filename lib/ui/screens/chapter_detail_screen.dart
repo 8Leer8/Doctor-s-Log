@@ -13,6 +13,7 @@ import '../../data/local/chapter_descriptions_loader.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../../data/local/download_store.dart';
 import '../../utils/chapter_detail_dialogs.dart';
+import '../../utils/cover_ref.dart';
 import '../widgets/common/app_toast.dart';
 import 'reader_screen.dart';
 import '../widgets/reader/image_modal.dart';
@@ -70,10 +71,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   double _lastScrollOffset = 0.0;
 
   static const double _kScrollDirectionThreshold = 20.0;
-
-  /// Side stories use the wide banner above the text. The main story and
-  /// vignettes (portrait covers) use the tall full-bleed header.
-  bool get _usesBannerLayout => !widget.category.usesTallHeader;
 
   @override
   void initState() {
@@ -174,16 +171,21 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         s.contains('no address associated');
   }
 
+  /// Tap-to-zoom on the cover: online art (from the cache / network) with the
+  /// bundled image as the backup.
   Future<void> _openBannerModal() async {
-    final folder = widget.category.imageFolder;
-    final assetPath = 'assets/images/$folder/${widget.chapter.number}.jpg';
+    final ref = CoverRef(
+      category: widget.category,
+      chapterId: widget.chapter.number,
+      entryPicId: widget.chapter.entryPicId,
+    );
 
     await ImageModal.show(
       context,
-      urls: const [],
-      cacheKey: 'banner:${widget.chapter.number}',
+      urls: ref.urls,
+      cacheKey: ref.cacheKey,
       title: widget.chapter.title,
-      assetPath: assetPath,
+      fallbackAssetBase: ref.bundledBase,
       placeholderMessage: 'Cover unavailable',
     );
   }
@@ -339,11 +341,10 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
   }
 
-  double _mainThemeHeaderHeight(BuildContext context) =>
+  /// The header art is square for every category (main story, side stories,
+  /// vignettes).
+  double _headerHeight(BuildContext context) =>
       MediaQuery.of(context).size.width;
-
-  double _sideStoryHeaderHeight(BuildContext context) =>
-      MediaQuery.of(context).size.width / 3.12;
 
   void _onScroll() {
     final offset = _scrollController.offset;
@@ -373,9 +374,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     const fillRangePx = 40.0;
     final fillFraction = (offset / fillRangePx).clamp(0.0, 1.0);
 
-    final headerHeight = _usesBannerLayout
-        ? _sideStoryHeaderHeight(context)
-        : _mainThemeHeaderHeight(context);
+    final headerHeight = _headerHeight(context);
     final titleStart = headerHeight - _kToolbarHeight + 20;
     const titleRangePx = 60.0;
     final titleFraction = ((offset - titleStart) / titleRangePx).clamp(
@@ -762,14 +761,16 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
-        body: _usesBannerLayout ? _buildSideStoryBody() : _buildMainThemeBody(),
+        body: _buildBodyStack(),
       ),
     );
   }
 
-  Widget _buildMainThemeBody() {
+  /// One layout for every category: full-bleed square cover behind the
+  /// header, parts list scrolling over it.
+  Widget _buildBodyStack() {
     final chapter = widget.chapter;
-    final headerHeight = _mainThemeHeaderHeight(context);
+    final headerHeight = _headerHeight(context);
     final topBarHeight = MediaQuery.of(context).padding.top + 64;
     final tapAreaHeight = (headerHeight - topBarHeight - 160).clamp(
       0.0,
@@ -789,6 +790,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
                 child: ChapterHeaderImage(
                   chapterId: chapter.number,
                   category: widget.category,
+                  entryPicId: chapter.entryPicId,
                 ),
               ),
               Positioned(
@@ -850,79 +852,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
             onDownloadAll: _downloadAll,
             onFilterTap: _openFilterSort,
           ),
-        if (!_selectionMode) _buildContinueButton(),
-        if (_selectionMode)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SelectionBottomBar(
-              actions: _currentActions(),
-              allBookmarked: _allSelectedBookmarked(),
-              onDownload: _bulkDownload,
-              onDelete: _bulkDelete,
-              onBookmark: _bulkBookmark,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildSideStoryBody() {
-    final chapter = widget.chapter;
-
-    return Stack(
-      children: [
-        Column(
-          children: [
-            if (_selectionMode)
-              SelectionTopBar(
-                selectedCount: _selectedIndices.length,
-                allSelected:
-                    _selectedIndices.length == widget.chapter.parts.length,
-                onClose: _exitSelection,
-                onSelectAll: _selectAll,
-                onInvert: _invertSelection,
-              )
-            else
-              ChapterDetailTopBar(
-                title: chapter.title,
-                collapseFraction: _collapseFraction,
-                titleFraction: _titleFraction,
-                onBack: () => Navigator.of(context).pop(),
-                onDownloadAll: _downloadAll,
-                onFilterTap: _openFilterSort,
-                solid: true,
-              ),
-            Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AspectRatio(
-                      aspectRatio: 3.12,
-                      child: GestureDetector(
-                        onTap: _openBannerModal,
-                        child: ChapterHeaderImage(
-                          chapterId: chapter.number,
-                          category: widget.category,
-                        ),
-                      ),
-                    ),
-                    ChapterDetailHeader(
-                      chapter: chapter,
-                      category: widget.category,
-                      description: _description,
-                      descriptionLoaded: _descriptionLoaded,
-                    ),
-                    _buildBody(),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
         if (!_selectionMode) _buildContinueButton(),
         if (_selectionMode)
           Positioned(

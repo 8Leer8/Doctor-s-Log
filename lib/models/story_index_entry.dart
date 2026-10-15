@@ -2,7 +2,8 @@ class StoryUnlockEntry {
   final String storyId;
   final int storySort;
   final String storyName;
-  final String storyTxt; // relative path, no extension, e.g. "obt/main/level_main_00-01_beg"
+  final String
+  storyTxt; // relative path, no extension, e.g. "obt/main/level_main_00-01_beg"
   final String avgTag;
   final String storyCode;
 
@@ -32,6 +33,10 @@ class ChapterIndexEntry {
   final String name;
   final String entryType; // "MAINLINE", "ACTIVITY", etc.
   final String actType;
+
+  /// Picture id used to find the online cover, e.g. "storyEntryPic_act35side".
+  /// Empty for main chapters (they use their own id).
+  final String storyEntryPicId;
   final List<StoryUnlockEntry> infoUnlockDatas;
 
   const ChapterIndexEntry({
@@ -39,23 +44,26 @@ class ChapterIndexEntry {
     required this.name,
     required this.entryType,
     required this.actType,
+    required this.storyEntryPicId,
     required this.infoUnlockDatas,
   });
 
   factory ChapterIndexEntry.fromJson(String id, Map<String, dynamic> json) {
     final rawList = (json['infoUnlockDatas'] as List<dynamic>? ?? []);
-    final parts = rawList
-        .whereType<Map<String, dynamic>>()
-        .map((e) => StoryUnlockEntry.fromJson(e))
-        .where((p) => p.storyTxt.isNotEmpty)
-        .toList()
-      ..sort((a, b) => a.storySort.compareTo(b.storySort));
+    final parts =
+        rawList
+            .whereType<Map<String, dynamic>>()
+            .map((e) => StoryUnlockEntry.fromJson(e))
+            .where((p) => p.storyTxt.isNotEmpty)
+            .toList()
+          ..sort((a, b) => a.storySort.compareTo(b.storySort));
 
     return ChapterIndexEntry(
       id: id,
       name: json['name'] as String? ?? id,
       entryType: json['entryType'] as String? ?? '',
       actType: json['actType'] as String? ?? '',
+      storyEntryPicId: json['storyEntryPicId'] as String? ?? '',
       infoUnlockDatas: parts,
     );
   }

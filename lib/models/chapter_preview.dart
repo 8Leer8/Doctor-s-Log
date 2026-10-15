@@ -12,6 +12,9 @@ class ChapterPreview {
   final int readTimeMinutes;
   final List<StoryPart> parts;
 
+  /// `storyEntryPicId` from the index; used to find the online cover.
+  final String? entryPicId;
+
   const ChapterPreview({
     required this.number,
     required this.title,
@@ -23,5 +26,6 @@ class ChapterPreview {
     this.wordCount = 0,
     this.readTimeMinutes = 0,
     this.parts = const [],
+    this.entryPicId,
   });
 }

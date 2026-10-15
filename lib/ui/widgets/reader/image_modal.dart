@@ -12,6 +12,10 @@ class ImageModal extends StatefulWidget {
   final String? placeholderMessage;
   final String? assetPath;
 
+  /// Bundled image shown when the online image can't be loaded. Pass the
+  /// path WITHOUT extension; .jpg is tried first, then .png.
+  final String? fallbackAssetBase;
+
   const ImageModal({
     super.key,
     required this.urls,
@@ -20,6 +24,7 @@ class ImageModal extends StatefulWidget {
     this.placeholderInitials,
     this.placeholderMessage,
     this.assetPath,
+    this.fallbackAssetBase,
   });
 
   static Future<void> show(
@@ -30,6 +35,7 @@ class ImageModal extends StatefulWidget {
     String? placeholderInitials,
     String? placeholderMessage,
     String? assetPath,
+    String? fallbackAssetBase,
   }) {
     return showDialog<void>(
       context: context,
@@ -43,6 +49,7 @@ class ImageModal extends StatefulWidget {
         placeholderInitials: placeholderInitials,
         placeholderMessage: placeholderMessage,
         assetPath: assetPath,
+        fallbackAssetBase: fallbackAssetBase,
       ),
     );
   }
@@ -153,20 +160,24 @@ class _ImageModalState extends State<ImageModal> {
     );
   }
 
+  Widget _zoomable(Widget image) {
+    return InteractiveViewer(
+      transformationController: _transformController,
+      minScale: 1.0,
+      maxScale: 5.0,
+      panEnabled: true,
+      scaleEnabled: true,
+      child: Center(child: image),
+    );
+  }
+
   Widget _buildContent() {
     if (widget.assetPath != null) {
-      return InteractiveViewer(
-        transformationController: _transformController,
-        minScale: 1.0,
-        maxScale: 5.0,
-        panEnabled: true,
-        scaleEnabled: true,
-        child: Center(
-          child: Image.asset(
-            widget.assetPath!,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
-          ),
+      return _zoomable(
+        Image.asset(
+          widget.assetPath!,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
         ),
       );
     }
@@ -176,22 +187,28 @@ class _ImageModalState extends State<ImageModal> {
         child: CircularProgressIndicator(color: AppColors.amber),
       );
     }
+
     if (_allFailed || _bytes == null) {
+      final base = widget.fallbackAssetBase;
+      if (base != null) {
+        return _zoomable(
+          Image.asset(
+            '$base.jpg',
+            fit: BoxFit.contain,
+            errorBuilder: (context, jpgError, jpgStack) => Image.asset(
+              '$base.png',
+              fit: BoxFit.contain,
+              errorBuilder: (context, pngError, pngStack) =>
+                  _buildPlaceholder(),
+            ),
+          ),
+        );
+      }
       return _buildPlaceholder();
     }
-    return InteractiveViewer(
-      transformationController: _transformController,
-      minScale: 1.0,
-      maxScale: 5.0,
-      panEnabled: true,
-      scaleEnabled: true,
-      child: Center(
-        child: Image.memory(
-          _bytes!,
-          fit: BoxFit.contain,
-          gaplessPlayback: true,
-        ),
-      ),
+
+    return _zoomable(
+      Image.memory(_bytes!, fit: BoxFit.contain, gaplessPlayback: true),
     );
   }
 

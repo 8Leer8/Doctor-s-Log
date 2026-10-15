@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import '../../../models/chapter_preview.dart';
+import '../../../models/story_category.dart';
 import '../chapter_card.dart';
 import 'library_empty_state.dart';
 
-/// Two-column grid of portrait chapter cards. Used by the Main Theme and
-/// Vignettes tabs, so they always look and behave the same.
+/// Two-column grid of portrait chapter cards. Used by the Main Theme, Side
+/// Stories and Vignettes tabs, so they always look and behave the same.
 class ChapterGrid extends StatelessWidget {
   final List<ChapterPreview> chapters;
   final Map<String, int> finishedCounts;
   final Future<void> Function(ChapterPreview chapter) onOpenChapter;
 
-  /// Folder under assets/images/ with this tab's cover art
-  /// ('chapters' for Main Theme, 'vignettes' for Vignettes).
-  final String imageFolder;
+  /// Which tab this is; decides where the cover comes from.
+  final StoryCategory category;
 
   final bool filtering;
   final String query;
@@ -31,7 +31,7 @@ class ChapterGrid extends StatelessWidget {
     required this.chapters,
     required this.finishedCounts,
     required this.onOpenChapter,
-    required this.imageFolder,
+    required this.category,
     required this.filtering,
     required this.query,
     required this.emptyTitle,
@@ -69,8 +69,8 @@ class ChapterGrid extends StatelessWidget {
         return ChapterCard(
           key: ValueKey(chapter.number),
           chapter: chapter,
+          category: category,
           finishedCount: finishedCounts[chapter.number] ?? 0,
-          imageFolder: imageFolder,
           onTap: () => onOpenChapter(chapter),
         );
       },

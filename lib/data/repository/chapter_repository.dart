@@ -62,6 +62,7 @@ class ChapterRepository {
       wordCount: 0,
       readTimeMinutes: 0,
       parts: parts,
+      entryPicId: entry.storyEntryPicId.isEmpty ? null : entry.storyEntryPicId,
     );
   }
 }

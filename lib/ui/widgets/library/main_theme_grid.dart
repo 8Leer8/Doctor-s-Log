@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/chapter_preview.dart';
 import '../chapter_card.dart';
 import 'library_empty_state.dart';
+import '../../../models/story_category.dart';
 
 class MainThemeGrid extends StatelessWidget {
   final List<ChapterPreview> chapters;
@@ -55,6 +56,7 @@ class MainThemeGrid extends StatelessWidget {
         return ChapterCard(
           key: ValueKey(chapter.number),
           chapter: chapter,
+          category: StoryCategory.mainTheme, // Check the actual enum name
           finishedCount: finishedCounts[chapter.number] ?? 0,
           onTap: () => onOpenChapter(chapter),
         );

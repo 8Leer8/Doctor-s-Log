@@ -1,45 +1,25 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
+import '../../models/story_category.dart';
 import '../../utils/act_type_formatter.dart';
+import 'common/cover_image.dart';
 
+/// Portrait card used by ALL three Library tabs (main story, side stories,
+/// vignettes).
 class ChapterCard extends StatelessWidget {
   final ChapterPreview chapter;
+  final StoryCategory category;
   final int finishedCount;
   final VoidCallback? onTap;
-
-  /// Folder under assets/images/ that holds this card's cover art
-  /// ('chapters' for the main story, 'side_stories' for vignettes).
-  final String imageFolder;
 
   const ChapterCard({
     super.key,
     required this.chapter,
+    required this.category,
     required this.finishedCount,
     this.onTap,
-    this.imageFolder = 'chapters',
   });
-
-  Widget _buildImage() {
-    return Image.asset(
-      'assets/images/$imageFolder/${chapter.number}.jpg',
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) => Image.asset(
-        'assets/images/$imageFolder/${chapter.number}.png',
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: AppColors.surfaceRaised,
-          child: Center(
-            child: Icon(
-              Icons.image_outlined,
-              size: 32,
-              color: AppColors.coldGray.withValues(alpha: 0.4),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +38,11 @@ class ChapterCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              _buildImage(),
+              CoverImage(
+                chapterId: chapter.number,
+                category: category,
+                entryPicId: chapter.entryPicId,
+              ),
               // Bottom fade so overlaid text stays legible on any artwork.
               const DecoratedBox(
                 decoration: BoxDecoration(

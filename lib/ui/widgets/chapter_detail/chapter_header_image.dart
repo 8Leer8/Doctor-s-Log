@@ -1,63 +1,32 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/story_category.dart';
+import '../common/cover_image.dart';
 
+/// Full-bleed header art on the chapter detail screen (all three categories).
 class ChapterHeaderImage extends StatelessWidget {
   final String chapterId;
   final StoryCategory category;
+  final String? entryPicId;
 
   const ChapterHeaderImage({
     super.key,
     required this.chapterId,
     required this.category,
+    this.entryPicId,
   });
-
-  String get _folder => category.imageFolder;
-
-  Widget _placeholder(Object error) {
-    if (kDebugMode) {
-      // Shows up in the `flutter run` console so a missing / unregistered
-      // cover is obvious instead of silently showing the gray box.
-      debugPrint(
-        'Cover not found for "$chapterId" in assets/images/$_folder/ -> $error',
-      );
-    }
-    return Container(
-      color: AppColors.surfaceRaised,
-      child: Center(
-        child: Icon(
-          Icons.image_outlined,
-          size: 48,
-          color: AppColors.coldGray.withValues(alpha: 0.4),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildImage() {
-    return Image.asset(
-      'assets/images/$_folder/$chapterId.jpg',
-      fit: BoxFit.cover,
-      errorBuilder: (context, jpgError, _) => Image.asset(
-        'assets/images/$_folder/$chapterId.png',
-        fit: BoxFit.cover,
-        errorBuilder: (context, _, _) => _placeholder(jpgError),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
-    // Side stories: plain banner image, no overlays.
-    if (!category.usesTallHeader) {
-      return _buildImage();
-    }
-
     return Stack(
       fit: StackFit.expand,
       children: [
-        _buildImage(),
+        CoverImage(
+          chapterId: chapterId,
+          category: category,
+          entryPicId: entryPicId,
+          placeholderIconSize: 48,
+        ),
         // Top scrim so the status bar / back button stay readable.
         const DecoratedBox(
           decoration: BoxDecoration(
