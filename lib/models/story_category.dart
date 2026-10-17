@@ -9,6 +9,11 @@ extension StoryCategoryAssets on StoryCategory {
     StoryCategory.vignette => 'vignettes',
   };
 
-  /// All three categories now share the same portrait card + tall header.
+  /// All three categories share the same card + detail layout.
   bool get usesTallHeader => true;
+  double get coverAspect => switch (this) {
+    StoryCategory.mainTheme => 1.26,
+    StoryCategory.sideStory => 0.83,
+    StoryCategory.vignette => 0.78,
+  };
 }

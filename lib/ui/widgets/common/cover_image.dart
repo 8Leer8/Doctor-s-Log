@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../data/local/cover_store.dart';
@@ -9,12 +10,18 @@ import '../../../utils/cover_ref.dart';
 /// offline backup. While nothing is cached the bundled image shows; when the
 /// online cover arrives it fades in (only the first time, afterwards it is
 /// served from the cache instantly).
+///
+/// The ONLINE art is shown whole ([fit] defaults to contain) and, for main
+/// chapters, rotated slightly so its polaroid frame is level. The bundled
+/// backup is your own image, so it fills the area ([bundledFit]) un-rotated.
 class CoverImage extends StatefulWidget {
   final String chapterId;
   final StoryCategory category;
   final String? entryPicId;
   final BoxFit fit;
+  final BoxFit bundledFit;
   final Alignment alignment;
+  final bool straighten;
   final double placeholderIconSize;
 
   const CoverImage({
@@ -22,8 +29,10 @@ class CoverImage extends StatefulWidget {
     required this.chapterId,
     required this.category,
     this.entryPicId,
-    this.fit = BoxFit.cover,
+    this.fit = BoxFit.contain,
+    this.bundledFit = BoxFit.cover,
     this.alignment = Alignment.center,
+    this.straighten = true,
     this.placeholderIconSize = 32,
   });
 
@@ -80,20 +89,36 @@ class _CoverImageState extends State<CoverImage> {
     );
   }
 
-  Widget _bundled(Key key) {
+  Widget _bundled() {
     final base = _ref.bundledBase;
     return Image.asset(
       '$base.jpg',
-      key: key,
-      fit: widget.fit,
+      key: ValueKey('bundled-${_ref.cacheKey}'),
+      fit: widget.bundledFit,
       alignment: widget.alignment,
       errorBuilder: (context, jpgError, jpgStack) => Image.asset(
         '$base.png',
-        fit: widget.fit,
+        fit: widget.bundledFit,
         alignment: widget.alignment,
         errorBuilder: (context, pngError, pngStack) => _placeholder(),
       ),
     );
+  }
+
+  Widget _online(Uint8List bytes) {
+    Widget image = Image.memory(
+      bytes,
+      fit: widget.fit,
+      alignment: widget.alignment,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+    );
+    final degrees = widget.straighten ? _ref.straightenDegrees : 0.0;
+    if (degrees != 0) {
+      // Positive angle = clockwise, which levels the counter-clockwise tilt.
+      image = Transform.rotate(angle: degrees * math.pi / 180, child: image);
+    }
+    return KeyedSubtree(key: ValueKey('online-${_ref.cacheKey}'), child: image);
   }
 
   @override
@@ -105,15 +130,7 @@ class _CoverImageState extends State<CoverImage> {
         fit: StackFit.expand,
         children: [...previous, if (current != null) current],
       ),
-      child: bytes != null
-          ? Image.memory(
-              bytes,
-              key: ValueKey('online-${_ref.cacheKey}'),
-              fit: widget.fit,
-              alignment: widget.alignment,
-              gaplessPlayback: true,
-            )
-          : _bundled(ValueKey('bundled-${_ref.cacheKey}')),
+      child: bytes != null ? _online(bytes) : _bundled(),
     );
   }
 }
