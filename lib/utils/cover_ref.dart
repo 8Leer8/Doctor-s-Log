@@ -9,32 +9,6 @@ class CoverRef {
   static const String _cdnBase =
       'https://cdn.jsdelivr.net/gh/ArknightsAssets/ArknightsAssets2@en/assets/dyn/arts/ui/';
 
-  /// The main-chapter art is a polaroid that is drawn tilted by about 1 degree
-  /// (counter-clockwise). These are the measured angles, in degrees, to rotate
-  /// it CLOCKWISE so the frame is level. Chapters not listed (new ones) use
-  /// [_defaultMainTilt], the value of the most recent chapters.
-  static const double _defaultMainTilt = 1.05;
-  static const Map<String, double> _mainTilt = {
-    'main_0': 0.89,
-    'main_1': 0.87,
-    'main_2': 0.0, // drawn straight
-    'main_3': 0.87,
-    'main_4': 1.17,
-    'main_5': 0.87,
-    'main_6': 0.87,
-    'main_7': 0.81,
-    'main_8': 0.81,
-    'main_9': 0.81,
-    'main_10': 0.86,
-    'main_11': 0.86,
-    'main_12': 1.10,
-    'main_13': 1.08,
-    'main_14': 1.06,
-    'main_15': 1.05,
-    'main_16': 1.05,
-    'main_17': 1.05,
-  };
-
   final StoryCategory category;
   final String chapterId;
 
@@ -51,13 +25,10 @@ class CoverRef {
   /// Key used by the on-disk image cache.
   String get cacheKey => 'cover:${category.name}:$chapterId';
 
-  /// Clockwise rotation (degrees) that levels the online art. Only main
-  /// chapters have a regular polaroid frame; side stories and vignettes are
+  /// Only main chapters are a regular polaroid frame whose tilt can be
+  /// measured and levelled (see CoverTilt). Side stories and vignettes are
   /// irregular collages, so they are shown as drawn.
-  double get straightenDegrees {
-    if (category != StoryCategory.mainTheme) return 0;
-    return _mainTilt[chapterId.toLowerCase()] ?? _defaultMainTilt;
-  }
+  bool get straightenable => category == StoryCategory.mainTheme;
 
   String? get _relativePath {
     final pic = entryPicId?.trim().toLowerCase();

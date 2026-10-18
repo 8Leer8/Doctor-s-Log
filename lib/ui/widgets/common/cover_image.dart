@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -6,14 +7,19 @@ import '../../../models/story_category.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/cover_ref.dart';
 
-/// A chapter cover: online art (cached on disk) with the bundled image as the
-/// offline backup. While nothing is cached the bundled image shows; when the
-/// online cover arrives it fades in (only the first time, afterwards it is
-/// served from the cache instantly).
+/// A chapter cover, served from the copy saved on the device.
 ///
-/// The ONLINE art is shown whole ([fit] defaults to contain) and, for main
-/// chapters, rotated slightly so its polaroid frame is level. The bundled
-/// backup is your own image, so it fills the area ([bundledFit]) un-rotated.
+///  * saved copy found  -> shown at once (memory / disk, a few milliseconds);
+///  * not saved yet     -> a neutral loading tile while it downloads (it does
+///                         NOT show the bundled art first, so nothing swaps);
+///  * unavailable       -> the bundled image (offline, or no online cover).
+///
+/// If a download takes longer than [_patience] the bundled image is shown
+/// meanwhile, and the online cover fades in if it eventually arrives.
+///
+/// The online art is shown whole ([fit]) and, for main chapters, rotated by
+/// the angle measured from the picture so its polaroid frame is level. The
+/// bundled backup is your own image: it fills the area ([bundledFit]).
 class CoverImage extends StatefulWidget {
   final String chapterId;
   final StoryCategory category;
@@ -41,8 +47,14 @@ class CoverImage extends StatefulWidget {
 }
 
 class _CoverImageState extends State<CoverImage> {
+  static const Duration _patience = Duration(seconds: 4);
+
   late CoverRef _ref;
   Uint8List? _bytes;
+  double _tilt = 0;
+  bool _loading = false;
+  bool _gaveUpWaiting = false;
+  Timer? _timer;
 
   @override
   void initState() {
@@ -60,7 +72,14 @@ class _CoverImageState extends State<CoverImage> {
     }
   }
 
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
   void _start() {
+    _timer?.cancel();
     final ref = CoverRef(
       category: widget.category,
       chapterId: widget.chapterId,
@@ -68,11 +87,26 @@ class _CoverImageState extends State<CoverImage> {
     );
     _ref = ref;
     _bytes = CoverStore.peek(ref);
+    _tilt = CoverStore.tiltOf(ref);
+    _loading = false;
+    _gaveUpWaiting = false;
     if (_bytes != null) return;
 
+    _loading = true;
+    _timer = Timer(_patience, () {
+      if (mounted && _loading && _bytes == null) {
+        setState(() => _gaveUpWaiting = true);
+      }
+    });
+
     CoverStore.load(ref).then((bytes) {
-      if (!mounted || bytes == null || ref.cacheKey != _ref.cacheKey) return;
-      setState(() => _bytes = bytes);
+      if (!mounted || ref.cacheKey != _ref.cacheKey) return;
+      _timer?.cancel();
+      setState(() {
+        _loading = false;
+        _bytes = bytes;
+        _tilt = CoverStore.tiltOf(ref);
+      });
     });
   }
 
@@ -84,6 +118,23 @@ class _CoverImageState extends State<CoverImage> {
           Icons.image_outlined,
           size: widget.placeholderIconSize,
           color: AppColors.coldGray.withValues(alpha: 0.4),
+        ),
+      ),
+    );
+  }
+
+  Widget _loadingTile() {
+    return Container(
+      key: ValueKey('loading-${_ref.cacheKey}'),
+      color: AppColors.surfaceRaised,
+      child: Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: AppColors.coldGray.withValues(alpha: 0.6),
+          ),
         ),
       ),
     );
@@ -113,9 +164,10 @@ class _CoverImageState extends State<CoverImage> {
       gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
     );
-    final degrees = widget.straighten ? _ref.straightenDegrees : 0.0;
+    // Measured from the picture itself (see CoverTilt), so new chapters need
+    // no hand-entered angle. Positive = clockwise = levels a CCW tilt.
+    final degrees = widget.straighten ? _tilt : 0.0;
     if (degrees != 0) {
-      // Positive angle = clockwise, which levels the counter-clockwise tilt.
       image = Transform.rotate(angle: degrees * math.pi / 180, child: image);
     }
     return KeyedSubtree(key: ValueKey('online-${_ref.cacheKey}'), child: image);
@@ -124,13 +176,20 @@ class _CoverImageState extends State<CoverImage> {
   @override
   Widget build(BuildContext context) {
     final bytes = _bytes;
+    final Widget child;
+    if (bytes != null) {
+      child = _online(bytes);
+    } else if (_loading && !_gaveUpWaiting) {
+      child = _loadingTile();
+    } else {
+      child = _bundled();
+    }
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
-      layoutBuilder: (current, previous) => Stack(
-        fit: StackFit.expand,
-        children: [...previous, if (current != null) current],
-      ),
-      child: bytes != null ? _online(bytes) : _bundled(),
+      layoutBuilder: (current, previous) =>
+          Stack(fit: StackFit.expand, children: [...previous, ?current]),
+      child: child,
     );
   }
 }
