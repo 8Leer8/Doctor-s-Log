@@ -1,103 +1,140 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_theme.dart';
 import '../../../models/chapter_preview.dart';
-import '../../../models/story_category.dart';
 import '../../../utils/act_type_formatter.dart';
+import 'detail_colors.dart';
 
-class ChapterDetailHeader extends StatelessWidget {
+/// Title block at the top of the sliding sheet: tag, title, collapsible
+/// left-aligned synopsis.
+class ChapterDetailHeader extends StatefulWidget {
   final ChapterPreview chapter;
-  final StoryCategory category;
   final String? description;
   final bool descriptionLoaded;
 
   const ChapterDetailHeader({
     super.key,
     required this.chapter,
-    required this.category,
     required this.description,
     required this.descriptionLoaded,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final formattedType = formatActType(chapter.subtitle);
+  State<ChapterDetailHeader> createState() => _ChapterDetailHeaderState();
+}
 
-    if (category.usesTallHeader) {
-      return Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.background.withValues(alpha: 0.0),
-              AppColors.background.withValues(alpha: 0.6),
-              AppColors.background,
-            ],
-            stops: const [0.0, 0.3, 1.0],
-          ),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-        child: _buildContent(formattedType, onImage: true),
-      );
-    }
+class _ChapterDetailHeaderState extends State<ChapterDetailHeader> {
+  bool _expanded = false;
 
-    return Container(
-      width: double.infinity,
-      color: AppColors.background,
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-      child: _buildContent(formattedType, onImage: false),
+  String _tag() {
+    final m = RegExp(r'^main_(\d+)$').firstMatch(widget.chapter.number);
+    if (m != null) return 'CHAPTER ${m.group(1)} • MAIN STORY';
+    return formatActType(widget.chapter.subtitle).toUpperCase();
+  }
+
+  Widget _synopsis(BuildContext context) {
+    if (!widget.descriptionLoaded) return const SizedBox.shrink();
+
+    final hasDesc = widget.description != null;
+    final text = hasDesc ? widget.description! : 'No description available.';
+    final style = TextStyle(
+      color: DetailColors.synopsis,
+      fontSize: 13.5,
+      height: 20 / 13.5,
+      fontStyle: hasDesc ? FontStyle.normal : FontStyle.italic,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final painter = TextPainter(
+            text: TextSpan(text: text, style: style),
+            maxLines: 3,
+            textDirection: TextDirection.ltr,
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout(maxWidth: constraints.maxWidth);
+          final truncated = painter.didExceedMaxLines;
+          painter.dispose();
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: truncated
+                ? () => setState(() => _expanded = !_expanded)
+                : null,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      text,
+                      maxLines: _expanded ? null : 3,
+                      overflow: _expanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                      textAlign: TextAlign.left,
+                      style: style,
+                    ),
+                  ),
+                ),
+                if (truncated)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _expanded ? 'Show less' : 'Read more',
+                          style: const TextStyle(
+                            color: DetailColors.amber,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Icon(
+                          _expanded ? Icons.expand_less : Icons.expand_more,
+                          size: 16,
+                          color: DetailColors.amber,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildContent(String formattedType, {required bool onImage}) {
-    final titleColor = onImage ? Colors.white : AppColors.textPrimary;
-    final descColor = onImage
-        ? ((descriptionLoaded && description == null)
-              ? Colors.white60
-              : Colors.white.withValues(alpha: 0.9))
-        : ((descriptionLoaded && description == null)
-              ? AppColors.textSecondary
-              : AppColors.textPrimary);
-
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          chapter.title,
-          style: TextStyle(
+          _tag(),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+            color: DetailColors.amber,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          widget.chapter.title,
+          style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w700,
             height: 1.2,
-            color: titleColor,
+            color: Colors.white,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          formattedType.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.4,
-            color: AppColors.amber,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          descriptionLoaded && description != null
-              ? description!
-              : (descriptionLoaded ? 'No description available.' : ''),
-          textAlign: TextAlign.justify,
-          style: TextStyle(
-            fontSize: 13,
-            height: 1.45,
-            color: descColor,
-            fontStyle: (descriptionLoaded && description == null)
-                ? FontStyle.italic
-                : FontStyle.normal,
-          ),
-        ),
+        _synopsis(context),
       ],
     );
   }

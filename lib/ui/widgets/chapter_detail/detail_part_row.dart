@@ -2,13 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/story_part.dart';
+import 'detail_colors.dart';
 
 enum DownloadState { notDownloaded, queued, downloading, downloaded }
 
 class DetailPartRow extends StatelessWidget {
   final StoryPart part;
+
+  /// Position in the chapter; used for the fallback stage code ("01", "02").
+  final int index;
   final bool finished;
+
+  /// True for the first unread part (the one CONTINUE launches).
+  final bool nextUp;
   final DownloadState downloadState;
+
+  /// Estimated reading time for this part, when known.
+  final int? minutes;
 
   /// 0.0–1.0 while downloading with known progress; null for
   /// indeterminate. Ignored when downloadState isn't [downloading].
@@ -32,6 +42,7 @@ class DetailPartRow extends StatelessWidget {
   const DetailPartRow({
     super.key,
     required this.part,
+    required this.index,
     required this.finished,
     required this.downloadState,
     required this.onDownloadTap,
@@ -39,6 +50,8 @@ class DetailPartRow extends StatelessWidget {
     required this.onLongPress,
     required this.onSwipeFinished,
     required this.onSwipeBookmark,
+    this.nextUp = false,
+    this.minutes,
     this.downloadProgress,
     this.selectionMode = false,
     this.selected = false,
@@ -126,7 +139,34 @@ class DetailPartRow extends StatelessWidget {
     );
   }
 
+  String get _stageCode {
+    final code = part.code;
+    if (code != null && code.isNotEmpty) return code;
+    return (index + 1).toString().padLeft(2, '0');
+  }
+
+  String? get _subtitle {
+    final pieces = <String>[];
+    final phase = part.avgTag;
+    if (phase != null && phase.trim().isNotEmpty) {
+      pieces.add(phase.trim().toUpperCase());
+    }
+    if (minutes != null && minutes! > 0) pieces.add('$minutes MIN');
+    return pieces.isEmpty ? null : pieces.join(' • ');
+  }
+
   Widget _buildContent(BuildContext context) {
+    final subtitle = _subtitle;
+    final codeColor = finished ? DetailColors.stageDim : DetailColors.amber;
+    final titleColor = finished ? DetailColors.slate : Colors.white;
+
+    Color background = Colors.transparent;
+    if (selected) {
+      background = Colors.white.withValues(alpha: 0.08);
+    } else if (nextUp) {
+      background = DetailColors.nextUpTint;
+    }
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -136,79 +176,117 @@ class DetailPartRow extends StatelessWidget {
         splashColor: Colors.transparent,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          color: selected
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.transparent,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Opacity(
-                  opacity: finished ? 0.55 : 1.0,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (bookmarked) ...[
-                        const Icon(
-                          Icons.bookmark,
-                          size: 16,
-                          color: AppColors.amber,
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
+          color: background,
+          child: Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: DetailColors.rowLine),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Opacity(
+                        opacity: finished ? 0.45 : 1.0,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Text(
-                              part.title,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textPrimary,
-                                height: 1.3,
-                              ),
-                            ),
-                            if (part.releaseDate != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Text(
-                                  _formatDate(part.releaseDate!),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppColors.coldGray,
-                                    height: 1.3,
-                                  ),
+                            SizedBox(
+                              width: 38,
+                              child: Text(
+                                _stageCode,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: codeColor,
                                 ),
                               ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      if (bookmarked) ...[
+                                        const Icon(
+                                          Icons.bookmark,
+                                          size: 14,
+                                          color: DetailColors.amber,
+                                        ),
+                                        const SizedBox(width: 6),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          part.title,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.25,
+                                            color: titleColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (subtitle != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 3),
+                                      child: Text(
+                                        subtitle,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          letterSpacing: 0.4,
+                                          color: DetailColors.slate,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                      if (part.filename == null)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 8),
-                          child: Icon(
-                            Icons.cloud_off,
-                            size: 14,
-                            color: AppColors.coldGray,
-                          ),
-                        ),
-                      GestureDetector(
-                        onTap: part.filename == null ? null : onDownloadTap,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 12),
-                          child: _buildDownloadIcon(),
+                    ),
+                    if (part.filename == null)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: Icon(
+                          Icons.cloud_off,
+                          size: 14,
+                          color: AppColors.coldGray,
                         ),
                       ),
-                    ],
-                  ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: part.filename == null ? null : onDownloadTap,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: _buildDownloadIcon(),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 14),
-                Container(height: 1, color: AppColors.border),
-              ],
-            ),
+              ),
+              // "Next up" accent bar, flush on the left edge.
+              if (nextUp)
+                const Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 3,
+                  child: ColoredBox(color: DetailColors.amber),
+                ),
+            ],
           ),
         ),
       ),
@@ -278,23 +356,5 @@ class DetailPartRow extends StatelessWidget {
           color: AppColors.coldGray,
         );
     }
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 }

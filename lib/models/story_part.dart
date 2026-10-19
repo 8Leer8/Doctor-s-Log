@@ -4,7 +4,11 @@ class StoryPart {
   final String? filename;
   final String? avgTag;
   final String? infoFilename;
-  final DateTime? releaseDate; // not populated yet — no per-part date in current data source
+  final DateTime?
+  releaseDate; // not populated yet — no per-part date in current data source
+
+  /// Stage code from the index (e.g. "07-01"). Null when the index has none.
+  final String? code;
 
   const StoryPart({
     required this.title,
@@ -13,5 +17,6 @@ class StoryPart {
     this.avgTag,
     this.infoFilename,
     this.releaseDate,
+    this.code,
   });
 }

@@ -6,6 +6,10 @@ class DetailActionButton extends StatelessWidget {
   final IconData icon;
   final bool filled;
   final bool large;
+
+  /// Fill the width the parent gives (use inside an Expanded) and center the
+  /// content.
+  final bool expanded;
   final VoidCallback onPressed;
 
   const DetailActionButton({
@@ -15,6 +19,7 @@ class DetailActionButton extends StatelessWidget {
     required this.onPressed,
     this.filled = false,
     this.large = false,
+    this.expanded = false,
   });
 
   @override
@@ -36,11 +41,14 @@ class DetailActionButton extends StatelessWidget {
                     border: Border.all(color: AppColors.border, width: 1),
                   ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon,
-                    size: large ? 22 : 16,
-                    color: filled ? Colors.black : AppColors.textSecondary),
+                Icon(
+                  icon,
+                  size: large ? 22 : 16,
+                  color: filled ? Colors.black : AppColors.textSecondary,
+                ),
                 SizedBox(width: large ? 8 : 6),
                 Text(
                   label,

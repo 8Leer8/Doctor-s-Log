@@ -19,17 +19,21 @@ import '../widgets/common/app_toast.dart';
 import 'reader_screen.dart';
 import '../widgets/reader/image_modal.dart';
 import '../widgets/chapter_detail/continue_button.dart';
-import '../widgets/chapter_detail/chapter_detail_header.dart';
 import '../widgets/chapter_detail/chapter_detail_body.dart';
 import '../widgets/chapter_detail/chapter_detail_top_bar.dart';
 import '../widgets/chapter_detail/chapter_header_image.dart';
+import '../widgets/chapter_detail/detail_colors.dart';
 import '../widgets/chapter_detail/part_filter_sort_sheet.dart';
 import '../widgets/chapter_detail/detail_part_row.dart';
 import '../widgets/chapter_detail/selection_actions.dart';
 import '../widgets/chapter_detail/selection_bottom_bar.dart';
 import '../widgets/chapter_detail/selection_top_bar.dart';
 
-const double _kToolbarHeight = 64;
+/// Visible height of the hero artwork (below the status bar area).
+const double _kHeroVisibleHeight = 250;
+
+/// How far above the top bar the sheet starts blending the bar to solid.
+const double _kBarBlendRange = 32;
 
 class ChapterDetailScreen extends StatefulWidget {
   final ChapterPreview chapter;
@@ -49,6 +53,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   List<bool> _finished = [];
   final Map<int, DownloadState> _downloadStates = {};
   final Map<int, double> _downloadProgress = {};
+  final Map<int, int> _partWordCounts = {};
   final _scrollController = ScrollController();
 
   final _dataSource = StoryDataSource();
@@ -58,8 +63,8 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   String? _description;
   bool _descriptionLoaded = false;
 
-  double _collapseFraction = 0;
-  double _titleFraction = 0;
+  /// 0 = top bar transparent over the artwork, 1 = solid.
+  double _solidFraction = 0;
 
   PartFilterMode _filterMode = PartFilterMode.all;
   PartSortOrder _sortOrder = PartSortOrder.ascending;
@@ -146,13 +151,18 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
   }
 
+  /// Counts words per part (shown as reading time on each row) and in total.
   Future<void> _computeWordCount() async {
     int total = 0;
-    for (final part in widget.chapter.parts) {
+    for (int i = 0; i < widget.chapter.parts.length; i++) {
+      final part = widget.chapter.parts[i];
       if (part.filename == null) continue;
       try {
         final raw = await _dataSource.fetchRawStory(part.filename!);
-        total += WordCountEstimator.countWords(raw);
+        final words = WordCountEstimator.countWords(raw);
+        total += words;
+        if (!mounted) return;
+        setState(() => _partWordCounts[i] = words);
       } catch (_) {}
     }
     if (mounted) {
@@ -343,10 +353,12 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     }
   }
 
-  /// The header art is square for every category (main story, side stories,
-  /// vignettes).
-  double _headerHeight(BuildContext context) =>
-      MediaQuery.of(context).size.width;
+  /// Hero = status bar area + the visible artwork height.
+  double _heroHeight(BuildContext context) =>
+      MediaQuery.of(context).padding.top + _kHeroVisibleHeight;
+
+  double _topBarHeight(BuildContext context) =>
+      MediaQuery.of(context).padding.top + ChapterDetailTopBar.toolbarHeight;
 
   void _onScroll() {
     final offset = _scrollController.offset;
@@ -373,22 +385,14 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       setState(() => _continueButtonCollapsed = shouldCollapse);
     }
 
-    const fillRangePx = 40.0;
-    final fillFraction = (offset / fillRangePx).clamp(0.0, 1.0);
+    // The sheet's top edge sits at (hero - offset). The bar blends to solid
+    // while that edge travels the last _kBarBlendRange px up to the bar.
+    final blendStart =
+        _heroHeight(context) - _topBarHeight(context) - _kBarBlendRange;
+    final solid = ((offset - blendStart) / _kBarBlendRange).clamp(0.0, 1.0);
 
-    final headerHeight = _headerHeight(context);
-    final titleStart = headerHeight - _kToolbarHeight + 20;
-    const titleRangePx = 60.0;
-    final titleFraction = ((offset - titleStart) / titleRangePx).clamp(
-      0.0,
-      1.0,
-    );
-
-    if (fillFraction != _collapseFraction || titleFraction != _titleFraction) {
-      setState(() {
-        _collapseFraction = fillFraction;
-        _titleFraction = titleFraction;
-      });
+    if (solid != _solidFraction) {
+      setState(() => _solidFraction = solid);
     }
   }
 
@@ -762,74 +766,69 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         _exitSelection();
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: DetailColors.sheet,
         body: _buildBodyStack(),
       ),
     );
   }
 
-  /// One layout for every category: full-bleed square cover behind the
-  /// header, parts list scrolling over it.
+  /// Fixed full-bleed hero behind; the content sheet scrolls up over it.
   Widget _buildBodyStack() {
     final chapter = widget.chapter;
-    final headerHeight = _headerHeight(context);
-    final topBarHeight = MediaQuery.of(context).padding.top + 64;
-    final tapAreaHeight = (headerHeight - topBarHeight - 160).clamp(
-      0.0,
-      double.infinity,
-    );
+    final hero = _heroHeight(context);
+    final barHeight = _topBarHeight(context);
+    final viewportHeight = MediaQuery.of(context).size.height;
 
     return Stack(
       children: [
+        // Fixed hero artwork — nothing drawn over it.
         Positioned(
           top: 0,
           left: 0,
           right: 0,
-          height: headerHeight,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: ChapterHeaderImage(
-                  chapterId: chapter.number,
-                  category: widget.category,
-                  entryPicId: chapter.entryPicId,
-                ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: ChapterDetailHeader(
-                  chapter: chapter,
-                  category: widget.category,
-                  description: _description,
-                  descriptionLoaded: _descriptionLoaded,
-                ),
-              ),
-            ],
+          height: hero,
+          child: ChapterHeaderImage(
+            chapterId: chapter.number,
+            category: widget.category,
+            entryPicId: chapter.entryPicId,
           ),
         ),
+        // Scrolling sheet.
         SingleChildScrollView(
           controller: _scrollController,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(height: headerHeight),
-              _buildBody(),
+              SizedBox(height: hero),
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: viewportHeight - hero),
+                child: _buildBody(),
+              ),
             ],
           ),
         ),
-        if (!_selectionMode && tapAreaHeight > 0)
-          Positioned(
-            top: topBarHeight,
-            left: 0,
-            right: 0,
-            height: tapAreaHeight,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _openBannerModal,
-              child: const SizedBox.expand(),
-            ),
+        // Tap-to-zoom only over the part of the hero that is still visible.
+        if (!_selectionMode)
+          AnimatedBuilder(
+            animation: _scrollController,
+            builder: (context, _) {
+              final offset = _scrollController.hasClients
+                  ? _scrollController.offset
+                  : 0.0;
+              final visibleHeight = hero - offset - barHeight;
+              if (visibleHeight <= 0) return const SizedBox.shrink();
+              return Positioned(
+                top: barHeight,
+                left: 0,
+                right: 0,
+                height: visibleHeight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _openBannerModal,
+                  child: const SizedBox.expand(),
+                ),
+              );
+            },
           ),
         if (_selectionMode)
           Positioned(
@@ -846,13 +845,17 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
             ),
           )
         else
-          ChapterDetailTopBar(
-            title: chapter.title,
-            collapseFraction: _collapseFraction,
-            titleFraction: _titleFraction,
-            onBack: () => Navigator.of(context).pop(),
-            onDownloadAll: _downloadAll,
-            onFilterTap: _openFilterSort,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ChapterDetailTopBar(
+              title: chapter.title,
+              solidFraction: _solidFraction,
+              onBack: () => Navigator.of(context).pop(),
+              onDownloadAll: _downloadAll,
+              onFilterTap: _openFilterSort,
+            ),
           ),
         if (!_selectionMode) _buildContinueButton(),
         if (_selectionMode)
@@ -886,11 +889,15 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   Widget _buildBody() {
     return ChapterDetailBody(
       chapter: widget.chapter,
+      description: _description,
+      descriptionLoaded: _descriptionLoaded,
       finished: _finished,
       downloadStates: _downloadStates,
       downloadProgress: _downloadProgress,
+      partWordCounts: _partWordCounts,
       displayIndices: _displayIndices,
       finishedCount: _finishedCount,
+      nextUpIndex: _finished.indexWhere((f) => !f),
       totalWordCount: _totalWordCount,
       computingWordCount: _computingWordCount,
       selectionMode: _selectionMode,

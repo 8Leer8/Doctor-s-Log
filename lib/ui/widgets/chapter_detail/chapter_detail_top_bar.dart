@@ -1,132 +1,162 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import 'detail_colors.dart';
 
-const double _kToolbarHeight = 64;
-
+/// Fixed top bar. Over the artwork it sits on a dark top-down gradient; as the
+/// content sheet reaches it, it fades to solid and the title fades in.
 class ChapterDetailTopBar extends StatelessWidget {
+  static const double toolbarHeight = 64;
+
   final String title;
-  final double collapseFraction;
-  final double titleFraction;
+
+  /// 0 = transparent over the artwork, 1 = solid (sheet reached the bar).
+  final double solidFraction;
   final VoidCallback onBack;
   final VoidCallback onDownloadAll;
   final VoidCallback onFilterTap;
 
-  /// When true, the bar's background is always fully opaque and the
-  /// icons are always their scrolled-in colors. Used for side stories,
-  /// where the header image sits below the bar rather than behind it.
-  /// The title still fades in via [titleFraction].
-  final bool solid;
-
   const ChapterDetailTopBar({
     super.key,
     required this.title,
-    required this.collapseFraction,
-    required this.titleFraction,
+    required this.solidFraction,
     required this.onBack,
     required this.onDownloadAll,
     required this.onFilterTap,
-    this.solid = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final statusBarHeight = MediaQuery.of(context).padding.top;
+    final topPad = MediaQuery.of(context).padding.top;
+    final barHeight = topPad + toolbarHeight;
+    final gradientHeight = math.max(88.0, barHeight);
+    final f = solidFraction.clamp(0.0, 1.0);
 
-    final effectiveCollapse = solid ? 1.0 : collapseFraction;
-    final bgColor = AppColors.background.withValues(alpha: effectiveCollapse);
-    final iconColor = Color.lerp(
-      Colors.white,
-      AppColors.coldGray,
-      effectiveCollapse,
-    )!;
-    final backColor = Color.lerp(
-      Colors.white,
-      AppColors.textPrimary,
-      effectiveCollapse,
-    )!;
-    final titleVisible = titleFraction >= 0.999;
-
-    return Container(
-      height: statusBarHeight + _kToolbarHeight,
-      padding: EdgeInsets.only(top: statusBarHeight),
-      decoration: BoxDecoration(
-        color: bgColor,
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.border.withValues(alpha: effectiveCollapse),
-            width: 1,
-          ),
-        ),
-      ),
-      child: SizedBox(
-        height: _kToolbarHeight,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: [
-              IconButton(
-                iconSize: 28,
-                icon: Icon(Icons.arrow_back, color: backColor),
-                onPressed: onBack,
-              ),
-              Expanded(
-                child: AnimatedOpacity(
-                  opacity: titleVisible ? 1 : 0,
-                  duration: const Duration(milliseconds: 150),
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
+    return SizedBox(
+      height: gradientHeight,
+      child: Stack(
+        children: [
+          // Dark gradient: keeps white icons legible over bright artwork.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: gradientHeight,
+            child: Opacity(
+              opacity: 1 - f,
+              child: const IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color.fromRGBO(15, 19, 25, 0.7),
+                        Color.fromRGBO(15, 19, 25, 0.0),
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
-              IconButton(
-                iconSize: 28,
-                icon: Icon(Icons.download_outlined, color: iconColor),
-                tooltip: 'Download all',
-                onPressed: onDownloadAll,
-              ),
-              IconButton(
-                iconSize: 28,
-                icon: Icon(Icons.tune, color: iconColor),
-                tooltip: 'Filter & sort',
-                onPressed: onFilterTap,
-              ),
-              PopupMenuButton<String>(
-                icon: Icon(Icons.menu, size: 28, color: iconColor),
-                color: AppColors.surface,
-                onSelected: (value) {},
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: 'refresh',
-                    child: Text(
-                      'Refresh',
-                      style: TextStyle(color: AppColors.textPrimary),
+            ),
+          ),
+          // Solid bar with a bottom hairline.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: barHeight,
+            child: Opacity(
+              opacity: f,
+              child: const IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: DetailColors.sheet,
+                    border: Border(
+                      bottom: BorderSide(color: DetailColors.hairline),
                     ),
                   ),
-                  PopupMenuItem(
-                    value: 'wiki',
-                    child: Text(
-                      'Open Wiki',
-                      style: TextStyle(color: AppColors.textPrimary),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: topPad,
+            left: 0,
+            right: 0,
+            height: toolbarHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    iconSize: 28,
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: onBack,
+                  ),
+                  Expanded(
+                    child: Opacity(
+                      opacity: f,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
                   ),
-                  PopupMenuItem(
-                    value: 'share',
-                    child: Text(
-                      'Share',
-                      style: TextStyle(color: AppColors.textPrimary),
+                  IconButton(
+                    iconSize: 28,
+                    icon: const Icon(
+                      Icons.download_outlined,
+                      color: Colors.white,
                     ),
+                    tooltip: 'Download all',
+                    onPressed: onDownloadAll,
+                  ),
+                  IconButton(
+                    iconSize: 28,
+                    icon: const Icon(Icons.tune, color: Colors.white),
+                    tooltip: 'Filter & sort',
+                    onPressed: onFilterTap,
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.menu, size: 28, color: Colors.white),
+                    color: AppColors.surface,
+                    onSelected: (value) {},
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'refresh',
+                        child: Text(
+                          'Refresh',
+                          style: TextStyle(color: AppColors.textPrimary),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'wiki',
+                        child: Text(
+                          'Open Wiki',
+                          style: TextStyle(color: AppColors.textPrimary),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'share',
+                        child: Text(
+                          'Share',
+                          style: TextStyle(color: AppColors.textPrimary),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

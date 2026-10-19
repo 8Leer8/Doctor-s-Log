@@ -48,6 +48,7 @@ class ChapterRepository {
                 : (u.storyCode.isNotEmpty ? u.storyCode : u.storyId),
             filename: '${u.storyTxt}.txt',
             avgTag: u.avgTag.isNotEmpty ? u.avgTag : null,
+            code: u.storyCode.isNotEmpty ? u.storyCode : null,
           ),
         )
         .toList();
