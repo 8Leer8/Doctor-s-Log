@@ -1,7 +1,8 @@
 import '../models/story_category.dart';
 
-/// Describes where one chapter's cover lives: online (community asset repo,
-/// found by the ids in story_review_table.json) and bundled (offline backup).
+/// Describes where one chapter's cover lives: bundled in the app, online
+/// (community asset repo, found by the ids in story_review_table.json), and
+/// the old bundled image (fallback for the few covers that aren't online).
 class CoverRef {
   // Raw GitHub first (tested), jsDelivr mirror second.
   static const String _rawBase =
@@ -22,7 +23,7 @@ class CoverRef {
     this.entryPicId,
   });
 
-  /// Key used by the on-disk image cache.
+  /// Key used by the on-disk image cache and the in-memory stores.
   String get cacheKey => 'cover:${category.name}:$chapterId';
 
   /// Only main chapters are a regular polaroid frame whose tilt can be
@@ -51,6 +52,10 @@ class CoverRef {
     return ['$_rawBase$p', '$_cdnBase$p'];
   }
 
-  /// Bundled backup, without extension (try .jpg then .png).
+  /// Cover shipped inside the app (made by tools/bundle_covers.py).
+  String get bundledCoverAsset =>
+      'assets/covers/${category.coverFolder}/$chapterId.webp';
+
+  /// Old bundled image, without extension (try .jpg then .png). Fallback only.
   String get bundledBase => 'assets/images/${category.imageFolder}/$chapterId';
 }

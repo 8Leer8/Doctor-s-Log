@@ -1,12 +1,19 @@
 enum StoryCategory { mainTheme, sideStory, vignette }
 
 extension StoryCategoryAssets on StoryCategory {
-  /// Folder under assets/images/ with the BUNDLED cover art. These are the
-  /// offline backup now; the online covers are the primary source.
+  /// Folder under assets/images/ with the OLD bundled art. Only used now as a
+  /// fallback for the few covers that don't exist online.
   String get imageFolder => switch (this) {
     StoryCategory.mainTheme => 'chapters',
     StoryCategory.sideStory => 'side_stories',
     StoryCategory.vignette => 'vignettes',
+  };
+
+  /// Folder under assets/covers/ with the bundled WebP covers.
+  String get coverFolder => switch (this) {
+    StoryCategory.mainTheme => 'main',
+    StoryCategory.sideStory => 'side',
+    StoryCategory.vignette => 'vignette',
   };
 
   /// All three categories share the same card + detail layout.
@@ -17,3 +24,10 @@ extension StoryCategoryAssets on StoryCategory {
     StoryCategory.vignette => 0.78,
   };
 }
+
+StoryCategory? storyCategoryFromCoverFolder(String folder) => switch (folder) {
+  'main' => StoryCategory.mainTheme,
+  'side' => StoryCategory.sideStory,
+  'vignette' => StoryCategory.vignette,
+  _ => null,
+};

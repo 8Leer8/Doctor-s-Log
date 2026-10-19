@@ -4,8 +4,10 @@ import '../../models/chapter_preview.dart';
 import '../../models/story_category.dart';
 import '../../data/repository/chapter_repository.dart';
 import '../../data/local/chapter_descriptions_loader.dart';
+import '../../data/local/cover_store.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../../data/search/library_search_index.dart';
+import '../../utils/cover_ref.dart';
 import '../controllers/library_search_controller.dart';
 import '../widgets/library/chapter_grid.dart';
 import '../widgets/library/library_section_tab_bar.dart';
@@ -77,6 +79,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
           descriptions: descriptions,
         ),
       );
+
+      // Fire-and-forget: only fetches covers newer than the bundled set.
+      CoverStore.syncAll([
+        for (final c in main)
+          CoverRef(
+            category: StoryCategory.mainTheme,
+            chapterId: c.number,
+            entryPicId: c.entryPicId,
+          ),
+        for (final c in side)
+          CoverRef(
+            category: StoryCategory.sideStory,
+            chapterId: c.number,
+            entryPicId: c.entryPicId,
+          ),
+        for (final c in vignettes)
+          CoverRef(
+            category: StoryCategory.vignette,
+            chapterId: c.number,
+            entryPicId: c.entryPicId,
+          ),
+      ]);
+
       await _loadProgressFor([...main, ...side, ...vignettes]);
     } catch (e) {
       if (!mounted) return;

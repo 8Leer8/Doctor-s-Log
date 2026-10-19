@@ -16,6 +16,10 @@ class ImageModal extends StatefulWidget {
   /// path WITHOUT extension; .jpg is tried first, then .png.
   final String? fallbackAssetBase;
 
+  /// Image bytes already in memory (e.g. a bundled cover). When given, the
+  /// modal shows them immediately without touching disk or network.
+  final Uint8List? initialBytes;
+
   const ImageModal({
     super.key,
     required this.urls,
@@ -25,6 +29,7 @@ class ImageModal extends StatefulWidget {
     this.placeholderMessage,
     this.assetPath,
     this.fallbackAssetBase,
+    this.initialBytes,
   });
 
   static Future<void> show(
@@ -36,6 +41,7 @@ class ImageModal extends StatefulWidget {
     String? placeholderMessage,
     String? assetPath,
     String? fallbackAssetBase,
+    Uint8List? initialBytes,
   }) {
     return showDialog<void>(
       context: context,
@@ -50,6 +56,7 @@ class ImageModal extends StatefulWidget {
         placeholderMessage: placeholderMessage,
         assetPath: assetPath,
         fallbackAssetBase: fallbackAssetBase,
+        initialBytes: initialBytes,
       ),
     );
   }
@@ -69,7 +76,10 @@ class _ImageModalState extends State<ImageModal> {
   @override
   void initState() {
     super.initState();
-    if (widget.assetPath != null) {
+    if (widget.initialBytes != null) {
+      _bytes = widget.initialBytes;
+      _loading = false;
+    } else if (widget.assetPath != null) {
       _loading = false;
     } else {
       _load();

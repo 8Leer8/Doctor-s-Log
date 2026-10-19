@@ -10,6 +10,7 @@ import '../../data/parser/story_parser.dart';
 import '../../data/parser/image_prefetcher.dart';
 import '../../data/local/bookmark_store.dart';
 import '../../data/local/chapter_descriptions_loader.dart';
+import '../../data/local/cover_store.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../../data/local/download_store.dart';
 import '../../utils/chapter_detail_dialogs.dart';
@@ -171,8 +172,8 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         s.contains('no address associated');
   }
 
-  /// Tap-to-zoom on the cover: online art (from the cache / network) with the
-  /// bundled image as the backup.
+  /// Tap-to-zoom on the cover: bundled / saved art shown instantly, online
+  /// download as the next step, old bundled image as the last backup.
   Future<void> _openBannerModal() async {
     final ref = CoverRef(
       category: widget.category,
@@ -187,6 +188,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       title: widget.chapter.title,
       fallbackAssetBase: ref.bundledBase,
       placeholderMessage: 'Cover unavailable',
+      initialBytes: CoverStore.peek(ref),
     );
   }
 
