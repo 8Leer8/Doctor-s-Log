@@ -17,9 +17,9 @@ class ChapterCard extends StatelessWidget {
   /// marginBottom of the grid item (row separation).
   static const double bottomGap = 16;
 
-  /// minHeight of the text wrapper, so 1-line and 2-line titles keep every
-  /// card in a row the same height.
-  static const double _textMinHeight = 48;
+  /// Height of the text wrapper. Fits: 1 label line (10px) + 2px gap +
+  /// 2 title lines (13px), all at line-height 1.2, with a little spare room.
+  static const double _textMinHeight = 56;
 
   static const Color _labelColor = Color(0xFFD99B26);
 
@@ -109,6 +109,7 @@ class ChapterCard extends StatelessWidget {
                   style: const TextStyle(
                     color: _labelColor,
                     fontSize: 10,
+                    height: 1.2,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                   ),
@@ -121,6 +122,7 @@ class ChapterCard extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFFFFFFFF),
                     fontSize: 13,
+                    height: 1.2,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
