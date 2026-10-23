@@ -1,12 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../models/chapter_preview.dart';
 import '../../models/story_category.dart';
 import '../../models/reader_part.dart';
-import '../../models/story_element.dart';
+import '../../data/download/download_manager.dart';
 import '../../data/remote/story_data_source.dart';
 import '../../data/parser/word_count_estimator.dart';
-import '../../data/parser/story_parser.dart';
 import '../../data/parser/image_prefetcher.dart';
 import '../../data/local/bookmark_store.dart';
 import '../../data/local/chapter_descriptions_loader.dart';
@@ -51,10 +51,15 @@ class ChapterDetailScreen extends StatefulWidget {
 
 class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   List<bool> _finished = [];
-  final Map<int, DownloadState> _downloadStates = {};
-  final Map<int, double> _downloadProgress = {};
   final Map<int, int> _partWordCounts = {};
   final _scrollController = ScrollController();
+
+  /// App-wide queue: parts download strictly one at a time.
+  final DownloadManager _downloads = DownloadManager.instance;
+  StreamSubscription<DownloadEvent>? _downloadEvents;
+
+  /// Parts of this chapter that are saved on the device.
+  final Set<String> _downloadedFilenames = {};
 
   final _dataSource = StoryDataSource();
   int? _totalWordCount;
@@ -82,23 +87,174 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   void initState() {
     super.initState();
     _finished = widget.chapter.parts.map((p) => p.finished).toList();
-    for (int i = 0; i < widget.chapter.parts.length; i++) {
-      _downloadStates[i] = DownloadState.notDownloaded;
-    }
     _loadFinishedProgress();
     _loadDownloadStates();
     _loadBookmarks();
     _computeWordCount();
     _loadDescription();
     _scrollController.addListener(_onScroll);
+    _downloads.addListener(_onDownloadsChanged);
+    _downloadEvents = _downloads.events.listen(_onDownloadEvent);
   }
 
   @override
   void dispose() {
+    _downloads.removeListener(_onDownloadsChanged);
+    _downloadEvents?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
+
+  // ------------------------------------------------------------- downloads
+
+  void _onDownloadsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onDownloadEvent(DownloadEvent e) {
+    if (!mounted) return;
+    switch (e.kind) {
+      case DownloadEventKind.partCompleted:
+        final f = e.filename;
+        if (f != null && widget.chapter.parts.any((p) => p.filename == f)) {
+          setState(() => _downloadedFilenames.add(f));
+        }
+      case DownloadEventKind.partFailed:
+        AppToast.failed(
+          context,
+          "Couldn't download ${e.partTitle ?? 'this part'}",
+        );
+      case DownloadEventKind.noInternet:
+        AppToast.show(
+          context,
+          'No internet · Downloads paused',
+          icon: Icons.wifi_off_rounded,
+          accent: Colors.redAccent,
+        );
+      case DownloadEventKind.queueFinished:
+        final n = e.completedCount;
+        final label = n == 1
+            ? 'Downloaded: ${e.partTitle ?? 'part'}'
+            : 'Downloaded $n parts';
+        if (e.failedImages > 0) {
+          AppToast.show(
+            context,
+            '$label · ${e.failedImages} image(s) failed',
+            icon: Icons.warning_amber_rounded,
+            accent: AppColors.amber,
+          );
+        } else {
+          AppToast.show(
+            context,
+            label,
+            icon: Icons.check_circle_outline,
+            accent: AppColors.amber,
+          );
+        }
+    }
+  }
+
+  DownloadState _stateOf(int index) {
+    final filename = widget.chapter.parts[index].filename;
+    if (filename == null) return DownloadState.notDownloaded;
+    final job = _downloads.jobFor(filename);
+    if (job != null) {
+      return job.state == DownloadJobState.downloading
+          ? DownloadState.downloading
+          : DownloadState.queued;
+    }
+    return _downloadedFilenames.contains(filename)
+        ? DownloadState.downloaded
+        : DownloadState.notDownloaded;
+  }
+
+  Map<int, DownloadState> get _downloadStates => {
+    for (int i = 0; i < widget.chapter.parts.length; i++) i: _stateOf(i),
+  };
+
+  Map<int, double> get _downloadProgress {
+    final out = <int, double>{};
+    for (int i = 0; i < widget.chapter.parts.length; i++) {
+      final filename = widget.chapter.parts[i].filename;
+      if (filename == null) continue;
+      final job = _downloads.jobFor(filename);
+      final p = job?.progress;
+      if (job != null &&
+          job.state == DownloadJobState.downloading &&
+          p != null) {
+        out[i] = p;
+      }
+    }
+    return out;
+  }
+
+  /// Adds every not-yet-downloaded part in [indices] to the queue. Returns
+  /// how many were added.
+  int _enqueueIndices(Iterable<int> indices) {
+    var added = 0;
+    for (final i in indices) {
+      final part = widget.chapter.parts[i];
+      final filename = part.filename;
+      if (filename == null) continue;
+      if (_stateOf(i) != DownloadState.notDownloaded) continue;
+      _downloads.enqueue(
+        chapterId: widget.chapter.number,
+        chapterTitle: widget.chapter.title,
+        partTitle: part.title,
+        filename: filename,
+      );
+      added++;
+    }
+    return added;
+  }
+
+  Future<void> _toggleDownload(int index) async {
+    final filename = widget.chapter.parts[index].filename;
+    if (filename == null) return;
+
+    switch (_stateOf(index)) {
+      case DownloadState.downloaded:
+        final confirmed = await showDeleteDownloadDialog(context);
+        if (confirmed != true) return;
+
+        await ImagePrefetcher.releaseImagesForPart(filename);
+        await DownloadStore.deleteContent(filename);
+
+        if (mounted) {
+          setState(() => _downloadedFilenames.remove(filename));
+        }
+      case DownloadState.queued:
+        // Waiting in line: tapping again takes it out.
+        _downloads.cancel(filename);
+      case DownloadState.downloading:
+        break;
+      case DownloadState.notDownloaded:
+        _enqueueIndices([index]);
+    }
+  }
+
+  void _downloadAll() {
+    final added = _enqueueIndices(
+      List<int>.generate(widget.chapter.parts.length, (i) => i),
+    );
+    AppToast.show(
+      context,
+      added > 0
+          ? 'Queued $added part(s) · downloading one at a time'
+          : 'Everything is already downloaded or queued',
+      icon: Icons.download_outlined,
+      accent: AppColors.amber,
+    );
+  }
+
+  Future<void> _bulkDownload() async {
+    final targets = _selectedIndices.toList();
+    _exitSelection();
+    _enqueueIndices(targets);
+  }
+
+  // ------------------------------------------------------------- load data
 
   Future<void> _loadFinishedProgress() async {
     final finishedSet = await ReadingProgressStore.getFinishedParts(
@@ -129,7 +285,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
       if (filename == null) continue;
       final isDownloaded = await DownloadStore.isDownloaded(filename);
       if (isDownloaded && mounted) {
-        setState(() => _downloadStates[i] = DownloadState.downloaded);
+        setState(() => _downloadedFilenames.add(filename));
       }
     }
   }
@@ -232,125 +388,6 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
         _bookmarkedFilenames.remove(filename);
       }
     });
-  }
-
-  Future<void> _toggleDownload(int index) async {
-    final filename = widget.chapter.parts[index].filename;
-    if (filename == null) return;
-
-    final currentState = _downloadStates[index] ?? DownloadState.notDownloaded;
-
-    if (currentState == DownloadState.downloaded) {
-      final confirmed = await showDeleteDownloadDialog(context);
-      if (confirmed != true) return;
-
-      await ImagePrefetcher.releaseImagesForPart(filename);
-      await DownloadStore.deleteContent(filename);
-
-      if (mounted) {
-        setState(() => _downloadStates[index] = DownloadState.notDownloaded);
-      }
-      return;
-    }
-
-    if (currentState == DownloadState.downloading) return;
-
-    setState(() {
-      _downloadStates[index] = DownloadState.downloading;
-      _downloadProgress.remove(index);
-    });
-
-    try {
-      final content = await _dataSource.fetchRawStory(filename);
-
-      if (content.trim().isEmpty || content.length < 50) {
-        throw Exception('Downloaded content is empty or too short');
-      }
-
-      await DownloadStore.saveContent(filename, content);
-
-      final verify = await DownloadStore.getContent(filename);
-      if (verify == null || verify.isEmpty) {
-        throw Exception('Failed to persist content to disk');
-      }
-
-      List<StoryElement> elements;
-      try {
-        elements = StoryParser.parse(content);
-      } catch (_) {
-        elements = const [];
-      }
-
-      PrefetchResult? prefetchResult;
-      try {
-        prefetchResult = await ImagePrefetcher.prefetch(
-          elements: elements,
-          partFilename: filename,
-          onProgress: (done, total) {
-            if (!mounted) return;
-            if (total <= 0) return;
-            setState(() {
-              _downloadProgress[index] = done / total;
-            });
-          },
-        );
-      } catch (_) {
-        prefetchResult = null;
-      }
-
-      if (mounted) {
-        setState(() {
-          _downloadStates[index] = DownloadState.downloaded;
-          _downloadProgress.remove(index);
-        });
-
-        if (prefetchResult != null && prefetchResult.failedIds.isNotEmpty) {
-          AppToast.show(
-            context,
-            'Downloaded · ${prefetchResult.failedIds.length} image(s) failed',
-            icon: Icons.warning_amber_rounded,
-            accent: AppColors.amber,
-          );
-        } else {
-          AppToast.show(
-            context,
-            'Downloaded: ${widget.chapter.parts[index].title}',
-            icon: Icons.check_circle_outline,
-            accent: AppColors.amber,
-          );
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _downloadStates[index] = DownloadState.notDownloaded;
-        _downloadProgress.remove(index);
-      });
-
-      if (_isNetworkError(e)) {
-        AppToast.noInternet(context);
-      } else {
-        AppToast.failed(context, 'Download failed: $e');
-      }
-    }
-  }
-
-  Future<void> _downloadAll() async {
-    final queue = <int>[];
-    setState(() {
-      for (int i = 0; i < widget.chapter.parts.length; i++) {
-        if (widget.chapter.parts[i].filename == null) continue;
-        final state = _downloadStates[i] ?? DownloadState.notDownloaded;
-        if (state == DownloadState.notDownloaded) {
-          _downloadStates[i] = DownloadState.queued;
-          queue.add(i);
-        }
-      }
-    });
-
-    for (final i in queue) {
-      await _toggleDownload(i);
-    }
   }
 
   /// Hero = status bar area + the visible artwork height.
@@ -576,48 +613,27 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
     });
   }
 
-  Future<void> _bulkDownload() async {
-    final targets = _selectedIndices.where((i) {
-      final p = widget.chapter.parts[i];
-      if (p.filename == null) return false;
-      final state = _downloadStates[i] ?? DownloadState.notDownloaded;
-      return state == DownloadState.notDownloaded;
-    }).toList();
-    _exitSelection();
-
-    setState(() {
-      for (final i in targets) {
-        _downloadStates[i] = DownloadState.queued;
-      }
-    });
-
-    for (final i in targets) {
-      await _toggleDownload(i);
-    }
-  }
-
   Future<void> _bulkDelete() async {
     final targets = _selectedIndices.toList();
 
     final confirmed = await _confirmBulkDelete(targets.length);
     if (confirmed != true || !mounted) return;
 
+    final removed = <String>[];
     for (final i in targets) {
       final filename = widget.chapter.parts[i].filename;
       if (filename == null) continue;
+      _downloads.cancel(filename);
+      if (!_downloadedFilenames.contains(filename)) continue;
       try {
         await ImagePrefetcher.releaseImagesForPart(filename);
         await DownloadStore.deleteContent(filename);
+        removed.add(filename);
       } catch (_) {}
     }
 
     if (mounted) {
-      setState(() {
-        for (final i in targets) {
-          _downloadStates[i] = DownloadState.notDownloaded;
-          _downloadProgress.remove(i);
-        }
-      });
+      setState(() => _downloadedFilenames.removeAll(removed));
       _exitSelection();
     }
   }
@@ -742,9 +758,7 @@ class _ChapterDetailScreenState extends State<ChapterDetailScreen> {
   List<SelectionAction> _currentActions() {
     final isDownloaded = List<bool>.generate(
       widget.chapter.parts.length,
-      (i) =>
-          (_downloadStates[i] ?? DownloadState.notDownloaded) ==
-          DownloadState.downloaded,
+      (i) => _stateOf(i) == DownloadState.downloaded,
     );
     final hasFile = List<bool>.generate(
       widget.chapter.parts.length,
