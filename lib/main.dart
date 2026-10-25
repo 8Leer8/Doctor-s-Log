@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'data/download/download_manager.dart';
 import 'data/local/cover_store.dart';
+import 'data/local/download_prefs_store.dart';
 import 'data/local/downloaded_index.dart';
 import 'data/local/library_filter_store.dart';
+import 'data/local/profile_store.dart';
 import 'data/local/reader_settings_store.dart';
 import 'theme/app_theme.dart';
 import 'ui/screens/app_shell.dart';
@@ -28,6 +31,13 @@ Future<void> main() async {
   // "Downloaded only" switch + a quick index of what is on the device.
   await LibraryFilterStore.load();
   await DownloadedIndex.instance.init();
+
+  // Your name, so the first story you open already shows it.
+  await ProfileStore.load();
+
+  // "Wi-Fi only" preference; the queue restarts itself when Wi-Fi returns.
+  await DownloadPrefsStore.load();
+  DownloadManager.instance.init();
 
   runApp(const ArknightReaderApp());
 }

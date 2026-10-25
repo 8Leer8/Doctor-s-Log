@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../data/download/download_manager.dart';
 import '../../data/local/library_filter_store.dart';
 import '../../theme/app_theme.dart';
 import '../controllers/library_search_controller.dart';
+import '../widgets/common/app_toast.dart';
 import '../widgets/common/home_top_bar.dart';
 import '../widgets/library/library_search_bar.dart';
 import 'history_screen.dart';
@@ -20,6 +23,7 @@ class _AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _search = LibrarySearchController();
+  StreamSubscription<void>? _wifiNotices;
 
   final _tabs = const [
     _TabItem('LIBRARY', Icons.menu_book_outlined),
@@ -33,10 +37,22 @@ class _AppShellState extends State<AppShell>
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
     _tabController.addListener(_onTabChanged);
+
+    // Downloads are app-wide, so this toast lives here, not on one screen.
+    _wifiNotices = DownloadManager.instance.waitingForWifiNotices.listen((_) {
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        'Waiting for Wi-Fi · Downloads start when you connect',
+        icon: Icons.wifi_off_rounded,
+        accent: AppColors.amber,
+      );
+    });
   }
 
   @override
   void dispose() {
+    _wifiNotices?.cancel();
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _search.dispose();

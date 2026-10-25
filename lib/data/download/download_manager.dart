@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../models/story_element.dart';
+import '../local/download_prefs_store.dart';
 import '../local/download_store.dart';
 import '../parser/image_prefetcher.dart';
 import '../parser/story_parser.dart';
@@ -62,6 +63,9 @@ class DownloadEvent {
 ///
 /// * No internet: the queue pauses and keeps its items. Resume from the
 ///   Download queue screen (or tap a download icon again).
+/// * "Wi-Fi only" on and the phone is on mobile data: the queue waits
+///   ([waitingForWifi]) and starts by itself when Wi-Fi connects or the
+///   option is turned off.
 /// * Any other error: that part is dropped and the queue moves on.
 class DownloadManager extends ChangeNotifier {
   DownloadManager._();
@@ -72,13 +76,22 @@ class DownloadManager extends ChangeNotifier {
   final StreamController<DownloadEvent> _events =
       StreamController<DownloadEvent>.broadcast();
 
+  /// Fires once each time the queue starts waiting for Wi-Fi (the app shell
+  /// turns it into a toast).
+  final StreamController<void> _wifiNotices =
+      StreamController<void>.broadcast();
+
+  bool _initialized = false;
+
   bool _running = false;
   bool _paused = false;
+  bool _waitingForWifi = false;
   int _sessionCompleted = 0;
   int _sessionFailedImages = 0;
   String? _lastTitle;
 
   Stream<DownloadEvent> get events => _events.stream;
+  Stream<void> get waitingForWifiNotices => _wifiNotices.stream;
 
   /// Jobs the user can see (cancelled ones that are still winding down are
   /// hidden).
@@ -87,12 +100,38 @@ class DownloadManager extends ChangeNotifier {
 
   int get length => _jobs.where((j) => !j.cancelled).length;
   bool get isPaused => _paused;
+  bool get waitingForWifi => _waitingForWifi;
 
   DownloadJob? jobFor(String filename) {
     for (final j in _jobs) {
       if (j.filename == filename && !j.cancelled) return j;
     }
     return null;
+  }
+
+  /// Call once at startup. Restarts a waiting queue when the connection
+  /// changes or "Wi-Fi only" is switched off.
+  void init() {
+    if (_initialized) return;
+    _initialized = true;
+    try {
+      DownloadPrefsStore.mobileOnlyChanges.listen(
+        (_) => _retryIfWaiting(),
+        onError: (_) {},
+      );
+    } catch (_) {}
+    DownloadPrefsStore.wifiOnly.addListener(_retryIfWaiting);
+  }
+
+  void _retryIfWaiting() {
+    if (_waitingForWifi) unawaited(_pump());
+  }
+
+  void _setWaiting(bool value) {
+    if (_waitingForWifi == value) return;
+    _waitingForWifi = value;
+    if (value) _wifiNotices.add(null);
+    notifyListeners();
   }
 
   // ------------------------------------------------------------------ queue
@@ -133,6 +172,7 @@ class DownloadManager extends ChangeNotifier {
       job.cancelled = true;
       if (job.state == DownloadJobState.queued) _jobs.remove(job);
     }
+    _setWaiting(false);
     notifyListeners();
     _maybeFinishSession();
   }
@@ -140,6 +180,7 @@ class DownloadManager extends ChangeNotifier {
   void pause() {
     if (_paused) return;
     _paused = true;
+    _setWaiting(false);
     notifyListeners();
   }
 
@@ -158,12 +199,30 @@ class DownloadManager extends ChangeNotifier {
     try {
       while (!_paused) {
         final next = _nextQueued();
-        if (next == null) break;
+        if (next == null) {
+          _setWaiting(false);
+          break;
+        }
+        if (!await DownloadPrefsStore.canDownloadNow()) {
+          _setWaiting(true);
+          break;
+        }
+        _setWaiting(false);
         await _process(next);
       }
     } finally {
       _running = false;
     }
+
+    // The connection may have changed while we were deciding to wait.
+    if (_waitingForWifi &&
+        !_paused &&
+        _nextQueued() != null &&
+        await DownloadPrefsStore.canDownloadNow()) {
+      unawaited(_pump());
+      return;
+    }
+
     _maybeFinishSession();
     notifyListeners();
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/download/download_manager.dart';
+import '../../data/local/download_prefs_store.dart';
 import '../../data/local/library_filter_store.dart';
 import '../../data/local/profile_store.dart';
 import '../../data/local/reader_settings_store.dart';
@@ -55,6 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _queueSubtitle(DownloadManager m) {
     final n = m.length;
     if (n == 0) return 'Nothing queued';
+    if (m.waitingForWifi) return '$n waiting · Wi-Fi only';
     if (m.isPaused) return '$n waiting · Paused';
     return '$n remaining · one at a time';
   }
@@ -121,6 +123,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+          ValueListenableBuilder<bool>(
+            valueListenable: DownloadPrefsStore.wifiOnly,
+            builder: (context, on, _) => SettingsSwitchTile(
+              icon: Icons.wifi,
+              title: 'Download over Wi-Fi only',
+              subtitle: 'Queued downloads wait while you are on mobile data',
+              value: on,
+              onChanged: DownloadPrefsStore.setWifiOnly,
+            ),
+          ),
           SettingsTile(
             icon: Icons.storage_outlined,
             title: 'Data and storage',
@@ -137,6 +149,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   '${s.fontSize.round()} pt · ${s.theme.label} · ${s.lineSpacing.label}',
               onTap: _openReaderSettings,
             ),
+          ),
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              ProfileStore.name,
+              ProfileStore.useNameInStories,
+            ]),
+            builder: (context, _) {
+              final name = ProfileStore.name.value;
+              final isDefault = name == ProfileStore.defaultName;
+              return SettingsSwitchTile(
+                icon: Icons.badge_outlined,
+                title: 'Use my name in stories',
+                subtitle: isDefault
+                    ? 'Set your name on your profile first'
+                    : 'Shows “$name” wherever a story says “Doctor”',
+                value: ProfileStore.useNameInStories.value,
+                onChanged: ProfileStore.setUseNameInStories,
+              );
+            },
           ),
           const SettingsDivider(),
           SettingsTile(

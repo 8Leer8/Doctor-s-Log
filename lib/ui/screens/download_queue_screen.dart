@@ -19,6 +19,7 @@ class DownloadQueueScreen extends StatelessWidget {
         builder: (context, _) {
           final jobs = manager.jobs;
           final paused = manager.isPaused;
+          final waiting = manager.waitingForWifi;
 
           return Column(
             children: [
@@ -70,8 +71,20 @@ class DownloadQueueScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              if (paused && jobs.isNotEmpty)
-                _PausedBanner(onResume: manager.resume),
+              if (waiting && jobs.isNotEmpty)
+                const _InfoBanner(
+                  icon: Icons.wifi_off_rounded,
+                  text:
+                      'Waiting for Wi-Fi. Downloads start automatically when '
+                      'you connect.',
+                )
+              else if (paused && jobs.isNotEmpty)
+                _InfoBanner(
+                  icon: Icons.pause_circle_outline,
+                  text: 'Paused. Resume when you are back online.',
+                  actionLabel: 'RESUME',
+                  onAction: manager.resume,
+                ),
               Expanded(
                 child: jobs.isEmpty
                     ? const _EmptyQueue()
@@ -85,42 +98,50 @@ class DownloadQueueScreen extends StatelessWidget {
   }
 }
 
-class _PausedBanner extends StatelessWidget {
-  final VoidCallback onResume;
+class _InfoBanner extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
-  const _PausedBanner({required this.onResume});
+  const _InfoBanner({
+    required this.icon,
+    required this.text,
+    this.actionLabel,
+    this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
+      padding: EdgeInsets.fromLTRB(20, 8, actionLabel == null ? 20 : 8, 8),
       color: AppColors.amber.withValues(alpha: 0.10),
       child: Row(
         children: [
-          const Icon(
-            Icons.pause_circle_outline,
-            size: 18,
-            color: AppColors.amber,
-          ),
+          Icon(icon, size: 18, color: AppColors.amber),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Paused. Resume when you are back online.',
-              style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
-            ),
-          ),
-          TextButton(
-            onPressed: onResume,
-            child: const Text(
-              'RESUME',
-              style: TextStyle(
-                color: AppColors.amber,
+              text,
+              style: const TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
               ),
             ),
           ),
+          if (actionLabel != null)
+            TextButton(
+              onPressed: onAction,
+              child: Text(
+                actionLabel!,
+                style: const TextStyle(
+                  color: AppColors.amber,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
         ],
       ),
     );
