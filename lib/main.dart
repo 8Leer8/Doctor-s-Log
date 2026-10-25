@@ -25,7 +25,7 @@ Future<void> main() async {
   // Saved reading preferences, so the reader opens in your theme at once.
   await ReaderSettingsStore.load();
 
-  // Load saved library filters and initialize the downloaded parts index.
+  // "Downloaded only" switch + a quick index of what is on the device.
   await LibraryFilterStore.load();
   await DownloadedIndex.instance.init();
 

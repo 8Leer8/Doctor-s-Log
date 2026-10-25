@@ -97,11 +97,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ValueListenableBuilder<bool>(
             valueListenable: LibraryFilterStore.downloadedOnly,
-            builder: (context, downloadedOnly, _) => SettingsSwitchTile(
+            builder: (context, on, _) => SettingsSwitchTile(
               icon: Icons.cloud_off_outlined,
               title: 'Downloaded only',
-              subtitle: 'Filters the library to chapters with downloaded parts',
-              value: downloadedOnly,
+              subtitle: 'Filters all entries in your library',
+              value: on,
               onChanged: LibraryFilterStore.setDownloadedOnly,
             ),
           ),

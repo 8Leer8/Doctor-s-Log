@@ -1,4 +1,5 @@
 import '../../models/story_element.dart';
+import '../../utils/player_name.dart';
 import '../local/character_sprite_map_store.dart';
 
 class StoryParser {
@@ -164,6 +165,9 @@ class StoryParser {
     return null;
   }
 
+  /// Parses a story script. Text shown to the reader goes through
+  /// [PlayerName.apply], so "Doctor" / "{@nickname}" show the player's name.
+  /// Portrait lookups use the ORIGINAL speaker name, so they are unaffected.
   static List<StoryElement> parse(String raw) {
     final result = <StoryElement>[];
 
@@ -197,7 +201,7 @@ class StoryParser {
             result.add(
               StoryLineElement(
                 speaker: null,
-                text: text,
+                text: PlayerName.apply(text),
                 requiredValue: currentRequiredValue,
                 gateChoiceId: currentGateChoiceId,
               ),
@@ -246,7 +250,7 @@ class StoryParser {
         if (text.isNotEmpty) {
           result.add(
             StoryLineElement(
-              text: text,
+              text: PlayerName.apply(text),
               requiredValue: currentRequiredValue,
               gateChoiceId: currentGateChoiceId,
             ),
@@ -261,7 +265,7 @@ class StoryParser {
         if (text.isNotEmpty) {
           result.add(
             StoryLineElement(
-              text: text,
+              text: PlayerName.apply(text),
               requiredValue: currentRequiredValue,
               gateChoiceId: currentGateChoiceId,
             ),
@@ -367,7 +371,7 @@ class StoryParser {
         final opts = <StoryChoiceOption>[
           for (int i = 0; i < count; i++)
             StoryChoiceOption(
-              label: options[i].trim(),
+              label: PlayerName.apply(options[i].trim()),
               value: values[i].trim(),
             ),
         ];
@@ -414,8 +418,8 @@ class StoryParser {
 
           result.add(
             StoryLineElement(
-              speaker: speaker,
-              text: text,
+              speaker: speaker == null ? null : PlayerName.apply(speaker),
+              text: PlayerName.apply(text),
               speakerPortraitId: portrait,
               requiredValue: currentRequiredValue,
               gateChoiceId: currentGateChoiceId,
@@ -431,7 +435,7 @@ class StoryParser {
 
       result.add(
         StoryLineElement(
-          text: line.trim(),
+          text: PlayerName.apply(line.trim()),
           requiredValue: currentRequiredValue,
           gateChoiceId: currentGateChoiceId,
         ),
