@@ -2,6 +2,15 @@ import 'package:flutter/material.dart';
 
 enum ReaderThemeOption { dark, black, sepia, light }
 
+extension ReaderThemeLabel on ReaderThemeOption {
+  String get label => switch (this) {
+    ReaderThemeOption.dark => 'Dark',
+    ReaderThemeOption.black => 'Black',
+    ReaderThemeOption.sepia => 'Sepia',
+    ReaderThemeOption.light => 'Light',
+  };
+}
+
 class ReaderThemeColors {
   final Color background;
   final Color text;
@@ -75,7 +84,18 @@ extension LineSpacingValue on LineSpacingOption {
   }
 }
 
+/// Global reading preferences (one set for the whole app, not per chapter).
+///
+/// Stored as a small versioned JSON object (see ReaderSettingsStore):
+///   {"v":1,"fontSize":16.0,"theme":"dark","lineSpacing":"comfortable",
+///    "keepScreenAwake":true}
+/// Enums are saved by NAME, so reordering them later never breaks saved
+/// settings, and unknown or missing values fall back to the defaults.
 class ReaderSettings {
+  static const int schemaVersion = 1;
+  static const double minFontSize = 12;
+  static const double maxFontSize = 24;
+
   final double fontSize;
   final ReaderThemeOption theme;
   final LineSpacingOption lineSpacing;
@@ -103,4 +123,47 @@ class ReaderSettings {
       keepScreenAwake: keepScreenAwake ?? this.keepScreenAwake,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'v': schemaVersion,
+    'fontSize': fontSize,
+    'theme': theme.name,
+    'lineSpacing': lineSpacing.name,
+    'keepScreenAwake': keepScreenAwake,
+  };
+
+  /// Tolerant reader: bad, missing or out-of-range values become defaults.
+  factory ReaderSettings.fromJson(Map<String, dynamic> json) {
+    const d = ReaderSettings();
+    final rawSize = json['fontSize'];
+    final size = rawSize is num ? rawSize.toDouble() : d.fontSize;
+    final awake = json['keepScreenAwake'];
+
+    return ReaderSettings(
+      fontSize: size.clamp(minFontSize, maxFontSize).toDouble(),
+      theme: _byName(ReaderThemeOption.values, json['theme']) ?? d.theme,
+      lineSpacing:
+          _byName(LineSpacingOption.values, json['lineSpacing']) ??
+          d.lineSpacing,
+      keepScreenAwake: awake is bool ? awake : d.keepScreenAwake,
+    );
+  }
+
+  static T? _byName<T extends Enum>(List<T> values, Object? name) {
+    for (final v in values) {
+      if (v.name == name) return v;
+    }
+    return null;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReaderSettings &&
+      other.fontSize == fontSize &&
+      other.theme == theme &&
+      other.lineSpacing == lineSpacing &&
+      other.keepScreenAwake == keepScreenAwake;
+
+  @override
+  int get hashCode => Object.hash(fontSize, theme, lineSpacing, keepScreenAwake);
 }

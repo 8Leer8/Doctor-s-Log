@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../data/download/download_manager.dart';
 import '../../data/local/profile_store.dart';
+import '../../data/local/reader_settings_store.dart';
 import '../../data/local/storage_stats.dart';
+import '../../models/reader_settings.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/reader/reader_settings_sheet.dart';
 import '../widgets/settings/edit_name_dialog.dart';
 import '../widgets/settings/profile_header.dart';
 import '../widgets/settings/settings_tile.dart';
@@ -44,7 +47,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _open(Widget screen) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => screen));
     _refreshStats();
   }
 
@@ -53,6 +58,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (n == 0) return 'Nothing queued';
     if (m.isPaused) return '$n waiting · Paused';
     return '$n remaining · one at a time';
+  }
+
+  /// Same sheet as inside the reader; every change is saved for next time.
+  void _openReaderSettings() {
+    ReaderSettingsSheet.show(
+      context,
+      ReaderSettingsStore.current,
+      ReaderSettingsStore.save,
+    );
   }
 
   void _showAbout() {
@@ -102,6 +116,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Data and storage',
             subtitle: 'Downloads, covers, reading progress',
             onTap: () => _open(const DataStorageScreen()),
+          ),
+          const SettingsDivider(),
+          ValueListenableBuilder<ReaderSettings>(
+            valueListenable: ReaderSettingsStore.settings,
+            builder: (context, s, _) => SettingsTile(
+              icon: Icons.auto_stories_outlined,
+              title: 'Reader',
+              subtitle:
+                  '${s.fontSize.round()} pt · ${s.theme.label} · ${s.lineSpacing.label}',
+              onTap: _openReaderSettings,
+            ),
           ),
           const SettingsDivider(),
           SettingsTile(

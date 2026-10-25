@@ -7,6 +7,7 @@ import '../../models/story_element.dart';
 import '../../models/reader_settings.dart';
 import '../../data/remote/story_data_source.dart';
 import '../../data/parser/story_parser.dart';
+import '../../data/local/reader_settings_store.dart';
 import '../../data/local/reading_progress_store.dart';
 import '../../data/local/download_store.dart';
 import '../widgets/reader/reader_item.dart';
@@ -75,7 +76,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   int? _confirmedReadOriginalIndex;
 
   bool _showControls = false;
-  ReaderSettings _settings = const ReaderSettings();
+
+  // Saved reading preferences, loaded at app start (see main.dart), so the
+  // very first frame already uses the saved theme / font size.
+  ReaderSettings _settings = ReaderSettingsStore.current;
 
   Map<int, int> _partListIndex = {};
   Map<String, int> _choiceListIndex = {};
@@ -590,6 +594,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final wakelockChanged =
           updated.keepScreenAwake != _settings.keepScreenAwake;
       setState(() => _settings = updated);
+      // Remember it for every future reading session.
+      ReaderSettingsStore.save(updated);
       if (wakelockChanged) {
         if (updated.keepScreenAwake) {
           WakelockPlus.enable();
