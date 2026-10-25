@@ -76,6 +76,48 @@ class SettingsTile extends StatelessWidget {
   }
 }
 
+/// A [SettingsTile] with an on/off switch. Tapping anywhere on the row
+/// flips it.
+class SettingsSwitchTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  const SettingsSwitchTile({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsTile(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      trailing: Switch(
+        value: value,
+        onChanged: onChanged,
+        activeThumbColor: AppColors.amber,
+        activeTrackColor: AppColors.amber.withValues(alpha: 0.35),
+        inactiveThumbColor: AppColors.coldGray,
+        inactiveTrackColor: AppColors.surfaceRaised,
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Colors.transparent
+              : AppColors.border,
+        ),
+      ),
+    );
+  }
+}
+
 /// Thin line between groups of settings rows.
 class SettingsDivider extends StatelessWidget {
   const SettingsDivider({super.key});

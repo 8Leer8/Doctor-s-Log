@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../data/local/library_filter_store.dart';
 import '../../theme/app_theme.dart';
 import '../controllers/library_search_controller.dart';
 import '../widgets/common/home_top_bar.dart';
@@ -54,9 +55,18 @@ class _AppShellState extends State<AppShell>
         icon: const Icon(Icons.search, color: AppColors.coldGray, size: 22),
         onPressed: _search.open,
       ),
-      IconButton(
-        icon: const Icon(Icons.tune, color: AppColors.coldGray, size: 20),
-        onPressed: () {},
+      ValueListenableBuilder<bool>(
+        valueListenable: LibraryFilterStore.downloadedOnly,
+        builder: (context, downloadedOnly, _) => IconButton(
+          tooltip: 'Downloaded only',
+          icon: Icon(
+            Icons.tune,
+            color: downloadedOnly ? AppColors.amber : AppColors.coldGray,
+            size: 20,
+          ),
+          onPressed: () =>
+              LibraryFilterStore.setDownloadedOnly(!downloadedOnly),
+        ),
       ),
     ];
   }

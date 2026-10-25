@@ -3,6 +3,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../download/download_manager.dart';
 import 'asset_ref_store.dart';
+import 'downloaded_index.dart';
 
 class StorageSnapshot {
   /// Downloaded story parts (text files).
@@ -131,6 +132,8 @@ class StorageStats {
       where: (n) => !n.startsWith(_coverPrefix),
     );
     await AssetRefStore.clear();
+    // Keep the Library's "Downloaded only" filter in sync.
+    await DownloadedIndex.instance.refresh();
   }
 
   /// Removes covers saved on the device. Covers bundled inside the app are

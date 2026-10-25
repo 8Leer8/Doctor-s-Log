@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/download/download_manager.dart';
+import '../../data/local/library_filter_store.dart';
 import '../../data/local/profile_store.dart';
 import '../../data/local/reader_settings_store.dart';
 import '../../data/local/storage_stats.dart';
@@ -47,9 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _open(Widget screen) async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => screen));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
     _refreshStats();
   }
 
@@ -96,6 +95,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onEdit: _editName,
             ),
           ),
+          ValueListenableBuilder<bool>(
+            valueListenable: LibraryFilterStore.downloadedOnly,
+            builder: (context, downloadedOnly, _) => SettingsSwitchTile(
+              icon: Icons.cloud_off_outlined,
+              title: 'Downloaded only',
+              subtitle: 'Filters the library to chapters with downloaded parts',
+              value: downloadedOnly,
+              onChanged: LibraryFilterStore.setDownloadedOnly,
+            ),
+          ),
+          const SettingsDivider(),
           ListenableBuilder(
             listenable: DownloadManager.instance,
             builder: (context, _) {
