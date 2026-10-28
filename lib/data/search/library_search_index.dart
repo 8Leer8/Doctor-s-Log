@@ -7,7 +7,7 @@ class SearchSuggestion {
   /// Text that replaces the search field when the suggestion is tapped.
   final String text;
 
-  /// Small secondary label, e.g. "in Evil Time Part 1".
+  /// Small secondary label.
   final String? context;
   final SuggestionKind kind;
 
@@ -24,7 +24,6 @@ class _Doc {
   final String title; // lowercase
   final String label; // lowercase, e.g. "chapter 3" / "event story"
   final String desc; // lowercase
-  final List<String> parts; // lowercase part titles
 
   const _Doc({
     required this.chapter,
@@ -32,13 +31,13 @@ class _Doc {
     required this.title,
     required this.label,
     required this.desc,
-    required this.parts,
   });
 }
 
-/// In-memory search over chapter titles, part titles and the bundled
-/// descriptions. Everything is precomputed once, so searching on every
-/// keystroke is cheap.
+/// In-memory search over CHAPTERS only: chapter title, chapter label
+/// ("chapter 3", "event story") and the bundled chapter description. Part
+/// titles inside a chapter are not searched. Everything is precomputed once,
+/// so searching on every keystroke is cheap.
 class LibrarySearchIndex {
   static const Set<String> _stopWords = {
     'part',
@@ -67,7 +66,6 @@ class LibrarySearchIndex {
   };
 
   static final RegExp _wordRe = RegExp(r"[A-Za-z][A-Za-z'’]+");
-  static final RegExp _sentenceSplit = RegExp(r'(?<=[.!?])\s+');
   static final RegExp _whitespace = RegExp(r'\s+');
 
   final List<_Doc> _mainDocs;
@@ -98,12 +96,6 @@ class LibrarySearchIndex {
     for (final doc in _allDocs) {
       _titles.add((lower: doc.title, display: doc.chapter.title));
       _addWords(doc.chapter.title);
-      for (final part in doc.chapter.parts) {
-        _addWords(part.title);
-      }
-    }
-    for (final desc in descriptions.values) {
-      _addProperNouns(desc);
     }
     _buildStartSuggestions();
   }
@@ -123,7 +115,6 @@ class LibrarySearchIndex {
             chapters[i].subtitle,
           ).toLowerCase(),
           desc: (descriptions[chapters[i].number] ?? '').toLowerCase(),
-          parts: chapters[i].parts.map((p) => p.title.toLowerCase()).toList(),
         ),
     ];
   }
@@ -148,59 +139,22 @@ class LibrarySearchIndex {
     }
   }
 
-  /// Collects capitalised words that are NOT the first word of a sentence,
-  /// which is a cheap way to pick up names and places (Amiya, Lungmen...)
-  /// without also picking up "Beneath", "Guided", etc.
-  void _addProperNouns(String text) {
-    for (final sentence in text.split(_sentenceSplit)) {
-      final words = _wordRe
-          .allMatches(sentence)
-          .map((m) => m.group(0)!)
-          .toList();
-      for (int i = 1; i < words.length; i++) {
-        final w = words[i];
-        final first = w[0];
-        if (first == first.toUpperCase()) {
-          _addWord(w);
-        }
-      }
-    }
-  }
-
+  /// The "TRY" chips and the rotating hint: chapter titles only, spread
+  /// evenly across Main Theme, Side Stories and Vignettes.
   void _buildStartSuggestions() {
-    final keywords = _vocabCount.keys.where((k) => k.length >= 5).toList()
-      ..sort((a, b) {
-        final c = _vocabCount[b]!.compareTo(_vocabCount[a]!);
-        return c != 0 ? c : a.compareTo(b);
-      });
-    final kw = keywords
-        .take(5)
-        .map(
-          (k) => SearchSuggestion(
-            text: _vocabDisplay[k]!,
-            kind: SuggestionKind.keyword,
-          ),
-        )
-        .toList();
-
-    final ti = <SearchSuggestion>[];
-    final usedIdx = <int>{};
-    for (int i = 0; i < 3 && _titles.isNotEmpty; i++) {
-      final idx = _titles.length * (2 * i + 1) ~/ 6;
-      if (usedIdx.add(idx)) {
-        ti.add(
+    if (_titles.isEmpty) return;
+    const count = 6;
+    final used = <int>{};
+    for (int i = 0; i < count; i++) {
+      final idx = _titles.length * (2 * i + 1) ~/ (2 * count);
+      if (used.add(idx)) {
+        startSuggestions.add(
           SearchSuggestion(
             text: _titles[idx].display,
             kind: SuggestionKind.chapter,
           ),
         );
       }
-    }
-
-    final n = kw.length > ti.length ? kw.length : ti.length;
-    for (int i = 0; i < n; i++) {
-      if (i < kw.length) startSuggestions.add(kw[i]);
-      if (i < ti.length) startSuggestions.add(ti[i]);
     }
     hints.addAll(startSuggestions.map((s) => s.text));
   }
@@ -226,8 +180,6 @@ class LibrarySearchIndex {
         s = 60;
       } else if (d.label.contains(t)) {
         s = 40;
-      } else if (d.parts.any((p) => p.contains(t))) {
-        s = 30;
       } else if (d.desc.contains(t)) {
         s = 10;
       } else {
@@ -263,8 +215,9 @@ class LibrarySearchIndex {
 
   // ---------------------------------------------------------------- ghost
 
-  /// The faded "rest of the word" shown after what the user has typed.
-  /// Empty string when there is nothing sensible to complete.
+  /// The faded "rest of the word" shown after what the user has typed,
+  /// completed from chapter titles only. Empty string when there is nothing
+  /// sensible to complete.
   String ghostFor(String raw) {
     if (raw.trim().isEmpty || raw.endsWith(' ')) return '';
     final lower = raw.toLowerCase();
@@ -278,7 +231,7 @@ class LibrarySearchIndex {
       }
     }
 
-    // 2) Last word is the start of a known keyword.
+    // 2) Last word is the start of a word used in a chapter title.
     final token = raw.substring(raw.lastIndexOf(' ') + 1).toLowerCase();
     if (token.length < 2) return '';
 
@@ -302,12 +255,12 @@ class LibrarySearchIndex {
 
   // ---------------------------------------------------------- suggestions
 
+  /// Chapter titles only (no keywords, no part titles).
   List<SearchSuggestion> suggestionsFor(String raw, {int limit = 8}) {
     final q = raw.trim().toLowerCase();
     if (q.isEmpty) return startSuggestions;
 
     final tokens = _tokens(q);
-    final last = tokens.last;
     final seen = <String>{q};
     final out = <SearchSuggestion>[];
 
@@ -322,67 +275,13 @@ class LibrarySearchIndex {
     });
     var added = 0;
     for (final d in chapterHits) {
-      if (added >= 3) break;
+      if (added >= limit) break;
       if (seen.add(d.title)) {
         out.add(
           SearchSuggestion(text: d.chapter.title, kind: SuggestionKind.chapter),
         );
         added++;
       }
-    }
-
-    // Keywords (names / places) starting with the last typed word.
-    if (last.length >= 2 && !raw.endsWith(' ')) {
-      final words =
-          _vocabCount.keys
-              .where((w) => w.startsWith(last) && w != last)
-              .toList()
-            ..sort((a, b) {
-              final c = _vocabCount[b]!.compareTo(_vocabCount[a]!);
-              return c != 0 ? c : a.length.compareTo(b.length);
-            });
-      final trimmed = raw.trim();
-      final prefix = trimmed.substring(0, trimmed.lastIndexOf(' ') + 1);
-      added = 0;
-      for (final w in words) {
-        if (added >= 3) break;
-        final text = '$prefix${_vocabDisplay[w]}';
-        if (seen.add(text.toLowerCase())) {
-          out.add(SearchSuggestion(text: text, kind: SuggestionKind.keyword));
-          added++;
-        }
-      }
-    }
-
-    // Part titles containing every typed word.
-    final partDisplay = <String, String>{};
-    final partChapter = <String, String>{};
-    final partCount = <String, int>{};
-    for (final d in _allDocs) {
-      for (int j = 0; j < d.parts.length; j++) {
-        final lower = d.parts[j];
-        if (tokens.every((t) => lower.contains(t))) {
-          partDisplay.putIfAbsent(lower, () => d.chapter.parts[j].title);
-          partChapter.putIfAbsent(lower, () => d.chapter.title);
-          partCount[lower] = (partCount[lower] ?? 0) + 1;
-        }
-      }
-    }
-    added = 0;
-    for (final e in partDisplay.entries) {
-      if (added >= 3 || out.length >= limit) break;
-      if (!seen.add(e.key)) continue;
-      final count = partCount[e.key]!;
-      out.add(
-        SearchSuggestion(
-          text: e.value,
-          kind: SuggestionKind.part,
-          context: count == 1
-              ? 'in ${partChapter[e.key]}'
-              : 'in $count chapters',
-        ),
-      );
-      added++;
     }
 
     return out.take(limit).toList();

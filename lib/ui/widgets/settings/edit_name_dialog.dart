@@ -62,7 +62,8 @@ class _EditNameDialogState extends State<EditNameDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Shown on your profile. Leave it empty to go back to "Doctor".',
+            'Shown on your profile and used in stories wherever they say '
+            '"Doctor". Leave it empty to go back to "Doctor".',
             style: TextStyle(
               color: AppColors.textSecondary,
               fontSize: 13,

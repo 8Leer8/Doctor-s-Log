@@ -150,25 +150,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _openReaderSettings,
             ),
           ),
-          ListenableBuilder(
-            listenable: Listenable.merge([
-              ProfileStore.name,
-              ProfileStore.useNameInStories,
-            ]),
-            builder: (context, _) {
-              final name = ProfileStore.name.value;
-              final isDefault = name == ProfileStore.defaultName;
-              return SettingsSwitchTile(
-                icon: Icons.badge_outlined,
-                title: 'Use my name in stories',
-                subtitle: isDefault
-                    ? 'Set your name on your profile first'
-                    : 'Shows “$name” wherever a story says “Doctor”',
-                value: ProfileStore.useNameInStories.value,
-                onChanged: ProfileStore.setUseNameInStories,
-              );
-            },
-          ),
           const SettingsDivider(),
           SettingsTile(
             icon: Icons.info_outline,

@@ -42,7 +42,7 @@ class LibraryEmptyState extends StatelessWidget {
       icon: Icons.search_off,
       title: 'NO MATCHES',
       message:
-          'Nothing for “$query” here.\nTry a character, place or part title.',
+          'Nothing for “$query” here.\nTry a chapter title, character or place.',
       action: otherCount > 0
           ? DetailActionButton(
               label: '$otherCount IN $otherLabel',

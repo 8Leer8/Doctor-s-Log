@@ -67,7 +67,7 @@ class _LibrarySearchBarState extends State<LibrarySearchBar> {
 
   String get _hintText {
     if (_hintIndex == 0 || widget.hints.isEmpty) {
-      return 'Search chapters, parts, keywords…';
+      return 'Search chapters…';
     }
     return 'Try “${widget.hints[(_hintIndex - 1) % widget.hints.length]}”';
   }
